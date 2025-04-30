@@ -53,7 +53,7 @@ void MainWindow::on_pushButton_findParcel_clicked() {
   QString resultMsg = "입력한 택배 정보: " + parcelInfo;
   ui->label_parcelResult->setText(resultMsg);
 
-  // 실제 로직(예: qnode->findParcel(parcelInfo.toStdString())); 필요시 추가
+  qnode->setItemInfo(parcelInfo.toStdString());
 }
 
 }  // namespace robot_master
