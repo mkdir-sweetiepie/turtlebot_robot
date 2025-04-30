@@ -56,6 +56,10 @@ void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vis
   // 
 }
 
+void QNode::setItemInfo(const std::string& item) {
+  driving_.master_msg_.item = item;
+}
+
 void QNode::turtleRun() {
   driving_.go();
   pub_motor->publish(driving_.motor_value_);

@@ -21,15 +21,17 @@
 #include <QThread>
 #include <opencv2/opencv.hpp>
 #include <turtlebot3_msgs/msg/sensor_state.hpp>
+
 #include "geometry_msgs/msg/twist.hpp"
+#include "robot_driving.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
-#include "robot_driving.hpp"
+#include "std_msgs/msg/string.hpp"
 /*****************************************************************************
 ** Class
 *****************************************************************************/
 namespace robot_master {
-  
+
 extern bool button_clicked;
 class QNode : public QThread {
   Q_OBJECT
@@ -38,6 +40,7 @@ class QNode : public QThread {
   ~QNode();
 
   RobotDriving driving_;
+  void setItemInfo(const std::string& item);
 
  protected:
   void run();
@@ -48,17 +51,17 @@ class QNode : public QThread {
   void initPubSub();
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
   void turtleRun();
-  
+
   // topic
   rclcpp::Publisher<robot_msgs::msg::MasterMsg>::SharedPtr pub_master;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_parcel_info;
 
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
 
  Q_SIGNALS:
   void rosShutDown();
   void dataReceived();
-  
 };
 
 }  // namespace robot_master
