@@ -3,13 +3,23 @@
  *
  * @brief Implementation for the qt gui.
  *
- * @date January 2025
+ * @date May 2025
  **/
 /*****************************************************************************
 ** Includes
 *****************************************************************************/
 
 #include "../include/robot_master/main_window.hpp"
+
+// Qt 헤더 추가
+#include <QCloseEvent>
+#include <QMessageBox>
+#include <QScrollBar>
+#include <QString>
+#include <QTime>
+// BURGER_MAX_LIN_VEL = 0.22
+// BURGER_MAX_ANG_VEL = 2.84
+
 namespace robot_master {
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindowDesign) {
@@ -23,6 +33,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
   move(820, 0);  // ui위치
   QObject::connect(qnode, SIGNAL(rosShutDown()), this, SLOT(close()));
   QObject::connect(qnode, SIGNAL(dataReceived()), this, SLOT(updateData()));
+  QObject::connect(qnode, SIGNAL(logMessage(QString)), this, SLOT(appendLog(QString)));
+  QObject::connect(qnode, SIGNAL(taskStateChanged(int)), this, SLOT(updateTaskState(int)));
+
+  // 초기 로그 메시지
+  appendLog("시스템이 초기화되었습니다");
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) { QMainWindow::closeEvent(event); }
@@ -30,16 +45,199 @@ void MainWindow::closeEvent(QCloseEvent* event) { QMainWindow::closeEvent(event)
 MainWindow::~MainWindow() { delete ui; }
 
 void MainWindow::updateData() {
-  // DRIVING MSG
-  
-}
-
-void MainWindow::on_pushButton_clicked() {
-  button_clicked = !button_clicked;
-  ui->pushButton->setText(button_clicked ? "stop" : "start");
-  RobotDriving::start = button_clicked;
+  // 모터 상태 업데이트
   ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
   ui->label_angular_z->setText(QString::number(qnode->driving_.motor_value_.angular.z));
+
+  // 리프트 상태 업데이트
+  if (qnode->task_manager_) {
+    auto lift_controller = qnode->task_manager_->getLiftController();
+    if (lift_controller) {
+      ui->liftHeightValue->setText(QString::number(lift_controller->getCurrentHeight()));
+    }
+  }
+}
+
+void MainWindow::appendLog(const QString& message) {
+  QString current_time = QTime::currentTime().toString("hh:mm:ss");
+  QString log_entry = QString("[%1] %2").arg(current_time).arg(message);
+
+  ui->textEdit_debugLog->append(log_entry);
+
+  // 스크롤을 항상 아래로 유지
+  ui->textEdit_debugLog->verticalScrollBar()->setValue(ui->textEdit_debugLog->verticalScrollBar()->maximum());
+}
+
+void MainWindow::updateTaskState(int state) {
+  TaskState task_state = static_cast<TaskState>(state);
+
+  // 상태에 따른 UI 업데이트
+  switch (task_state) {
+    case TaskState::IDLE:
+      ui->statusValueLabel->setText("대기 중");
+      ui->statusValueLabel->setStyleSheet("color: #d8dee9;");
+      break;
+    case TaskState::SEARCHING:
+      ui->statusValueLabel->setText("위치 검색 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::NAVIGATING_TO_PARCEL:
+      ui->statusValueLabel->setText("물품 이동 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::RECOGNIZING_PARCEL:
+      ui->statusValueLabel->setText("물품 인식 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::LIFTING_PARCEL:
+      ui->statusValueLabel->setText("물품 들어 올리는 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::DELIVERING:
+      ui->statusValueLabel->setText("배송 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::DROPPING_PARCEL:
+      ui->statusValueLabel->setText("물품 내려놓는 중");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::COMPLETED:
+      ui->statusValueLabel->setText("작업 완료");
+      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      break;
+    case TaskState::ERROR:
+      ui->statusValueLabel->setText("오류 발생");
+      ui->statusValueLabel->setStyleSheet("color: #bf616a;");
+      break;
+  }
+}
+
+// 방향 버튼 핸들러 구현
+void MainWindow::on_forwardButton_pressed() {
+  // RobotDriving::start를 true로 설정하여 로봇이 동작하도록 함
+  RobotDriving::start = true;
+
+  // 직접 속도 설정
+  qnode->driving_.motor_value_.linear.x = -0.1;  // 전진 속도
+  qnode->driving_.motor_value_.angular.z = 0.0;
+
+  // UI 업데이트
+  ui->statusValueLabel->setText("이동 중: 전진");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+  ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
+  ui->label_angular_z->setText(QString::number(qnode->driving_.motor_value_.angular.z));
+
+  appendLog("전진 명령 실행");
+}
+
+void MainWindow::on_backwardButton_pressed() {
+  RobotDriving::start = true;
+
+  qnode->driving_.motor_value_.linear.x = 0.1;  // 후진 속도
+  qnode->driving_.motor_value_.angular.z = 0.0;
+
+  ui->statusValueLabel->setText("이동 중: 후진");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+  ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
+  ui->label_angular_z->setText(QString::number(qnode->driving_.motor_value_.angular.z));
+
+  appendLog("후진 명령 실행");
+}
+
+void MainWindow::on_leftButton_pressed() {
+  RobotDriving::start = true;
+
+  qnode->driving_.motor_value_.linear.x = 0.0;   // 회전 중 약간의 전진
+  qnode->driving_.motor_value_.angular.z = 1.0;  // 좌회전 속도
+
+  ui->statusValueLabel->setText("이동 중: 좌회전");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+  ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
+  ui->label_angular_z->setText(QString::number(qnode->driving_.motor_value_.angular.z));
+
+  appendLog("좌회전 명령 실행");
+}
+
+void MainWindow::on_rightButton_pressed() {
+  RobotDriving::start = true;
+
+  qnode->driving_.motor_value_.linear.x = 0.0;    // 회전 중 약간의 전진
+  qnode->driving_.motor_value_.angular.z = -1.0;  // 우회전 속도
+
+  ui->statusValueLabel->setText("이동 중: 우회전");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+  ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
+  ui->label_angular_z->setText(QString::number(qnode->driving_.motor_value_.angular.z));
+
+  appendLog("우회전 명령 실행");
+}
+
+void MainWindow::on_stopButton_clicked() {
+  // RobotDriving::start를 false로 설정하여 go() 함수에서 로봇이 멈추도록 함
+  RobotDriving::start = false;
+
+  // 직접 속도 0으로 설정
+  qnode->driving_.motor_value_.linear.x = 0.0;
+  qnode->driving_.motor_value_.angular.z = 0.0;
+
+  ui->statusValueLabel->setText("정지");
+  ui->statusValueLabel->setStyleSheet("color: #d8dee9;");
+  ui->label_linear_x->setText("0.0");
+  ui->label_angular_z->setText("0.0");
+
+  appendLog("정지 명령 실행");
+}
+
+void MainWindow::on_emergencyStopButton_clicked() {
+  // 긴급 정지: 모든 동작 중지
+  RobotDriving::start = false;
+
+  // 모든 모터 속도 0으로 설정
+  qnode->driving_.motor_value_.linear.x = 0.0;
+  qnode->driving_.motor_value_.linear.y = 0.0;
+  qnode->driving_.motor_value_.linear.z = 0.0;
+  qnode->driving_.motor_value_.angular.x = 0.0;
+  qnode->driving_.motor_value_.angular.y = 0.0;
+  qnode->driving_.motor_value_.angular.z = 0.0;
+
+  // 화면 표시 업데이트
+  ui->statusValueLabel->setText("비상 정지");
+  ui->statusValueLabel->setStyleSheet("color: #bf616a;");  // 빨간색으로 상태 표시
+  ui->label_linear_x->setText("0.0");
+  ui->label_angular_z->setText("0.0");
+
+  // 현재 작업 취소
+  qnode->cancelTask();
+
+  appendLog("비상 정지 명령 실행");
+}
+
+void MainWindow::on_liftUpButton_clicked() {
+  if (qnode->task_manager_) {
+    auto lift_controller = qnode->task_manager_->getLiftController();
+    if (lift_controller) {
+      lift_controller->moveUp();
+      appendLog("리프트 올림 명령 실행");
+    } else {
+      appendLog("리프트 컨트롤러를 초기화할 수 없습니다");
+    }
+  } else {
+    appendLog("작업 관리자가 초기화되지 않았습니다");
+  }
+}
+
+void MainWindow::on_liftDownButton_clicked() {
+  if (qnode->task_manager_) {
+    auto lift_controller = qnode->task_manager_->getLiftController();
+    if (lift_controller) {
+      lift_controller->moveDown();
+      appendLog("리프트 내림 명령 실행");
+    } else {
+      appendLog("리프트 컨트롤러를 초기화할 수 없습니다");
+    }
+  } else {
+    appendLog("작업 관리자가 초기화되지 않았습니다");
+  }
 }
 
 void MainWindow::on_pushButton_findParcel_clicked() {
@@ -47,6 +245,7 @@ void MainWindow::on_pushButton_findParcel_clicked() {
 
   if (parcelInfo.trimmed().isEmpty()) {
     ui->label_parcelResult->setText("택배 정보를 입력하세요.");
+    appendLog("오류: 빈 택배 정보");
     return;
   }
 
@@ -54,6 +253,9 @@ void MainWindow::on_pushButton_findParcel_clicked() {
   ui->label_parcelResult->setText(resultMsg);
 
   qnode->setItemInfo(parcelInfo.toStdString());
+  qnode->startFindParcelTask();
+
+  appendLog("물품 검색 작업 시작: " + parcelInfo);
 }
 
 }  // namespace robot_master

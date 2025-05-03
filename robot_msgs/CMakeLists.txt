@@ -21,17 +21,30 @@ find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 
+# 메시지, 서비스, 액션 파일 설정
 set(msg_files
-  "msg/VisionMsg.msg"
   "msg/MasterMsg.msg"
+  "msg/VisionMsg.msg"
+)
+
+set(srv_files
+  "srv/RecognizeItem.srv"
+  "srv/NavigateToParcel.srv"
+)
+
+set(action_files
+  "action/LiftAction.action"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
-  DEPENDENCIES builtin_interfaces sensor_msgs std_msgs
+  ${srv_files}
+  ${action_files}
+  DEPENDENCIES std_msgs geometry_msgs action_msgs
 )
-
 ament_export_dependencies(rosidl_default_runtime)
 
 ament_package()

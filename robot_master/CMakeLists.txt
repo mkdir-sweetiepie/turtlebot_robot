@@ -22,6 +22,8 @@ find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(robot_msgs REQUIRED)
 find_package(turtlebot3_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(yaml_cpp_vendor REQUIRED)
 
 file(GLOB PRO_SOURCE_DIR RELATIVE ${CMAKE_SOURCE_DIR} FOLLOW_SYMLINKS src/*.cpp)
 file(GLOB PRO_UI_DIR RELATIVE ${CMAKE_SOURCE_DIR} FOLLOW_SYMLINKS ui/*.ui)
@@ -55,6 +57,8 @@ ament_target_dependencies(${PROJECT_NAME}
   image_transport
   robot_msgs
   turtlebot3_msgs
+  yaml_cpp_vendor
+  rclcpp_action
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -67,6 +71,10 @@ target_link_libraries(${PROJECT_NAME}
 
 install(TARGETS ${PROJECT_NAME}
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 ament_package()

@@ -1,33 +1,45 @@
-#ifndef ROBOT_DRIVING_HPP
-#define ROBOT_DRIVING_HPP
+/**
+ * @file /include/robot_master/robot_driving.hpp
+ *
+ * @brief Header for robot driving control.
+ *
+ * @date May 2025
+ **/
 
-#include <rclcpp/rclcpp.hpp>
+#ifndef ROBOT_MASTER_ROBOT_DRIVING_HPP
+#define ROBOT_MASTER_ROBOT_DRIVING_HPP
+
+#include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
-#include "robot_msgs/msg/vision_msg.hpp"
 
 namespace robot_master {
+
+// 열거형 이름 변경: DrivingSituation -> Situation
+enum class Situation { NONE, SLAM, SEARCH_PARCEL, RECOGNIZE_QR, NAVIGATION, LIFT_PARCEL, RETURN_TO_BASE };
 
 class RobotDriving {
  public:
   RobotDriving();
+
   void go();
   void setSpeed(double linear, double angular);
+  void analyzeSituation();
 
-  robot_msgs::msg::MasterMsg master_msg_;
-  robot_msgs::msg::VisionMsg Vision_msg_;
+  // Robot speed command
   geometry_msgs::msg::Twist motor_value_;
 
+  // Master message for communication
+  robot_msgs::msg::MasterMsg master_msg_;
+
+  // Static control flag
   static bool start;
 
  private:
-  void analyzeSituation();
-
-  int situation;
-  enum Situation { NONE = 0, SLAM, QR, LIFT };
+  Situation situation;  // DrivingSituation -> Situation으로 변경
 };
 
 }  // namespace robot_master
 
-#endif  // ROBOT_DRIVING_HPP
+#endif  // ROBOT_MASTER_ROBOT_DRIVING_HPP

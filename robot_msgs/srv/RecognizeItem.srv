@@ -1,0 +1,7 @@
+# Request
+string expected_id
+---
+# Response
+bool found
+string id
+float64 confidence

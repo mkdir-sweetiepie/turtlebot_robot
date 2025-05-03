@@ -1,13 +1,31 @@
+/**
+ * @file /src/robot_driving.cpp
+ *
+ * @brief Implementation for robot driving control.
+ *
+ * @date May 2025
+ **/
+
 #include "../include/robot_master/robot_driving.hpp"
 
 namespace robot_master {
 
 bool RobotDriving::start = false;
 
-RobotDriving::RobotDriving() : situation(NONE) {
+RobotDriving::RobotDriving() : situation(Situation::NONE) {
+  // Initialize motor values to 0
+  motor_value_.linear.x = 0.0;
+  motor_value_.linear.y = 0.0;
+  motor_value_.linear.z = 0.0;
+  motor_value_.angular.x = 0.0;
+  motor_value_.angular.y = 0.0;
+  motor_value_.angular.z = 0.0;
+
+  // Initialize master message flags
   master_msg_.slam = false;
   master_msg_.qr = false;
   master_msg_.lift = false;
+  master_msg_.item = "";
 }
 
 void RobotDriving::setSpeed(double linear, double angular) {
@@ -17,20 +35,35 @@ void RobotDriving::setSpeed(double linear, double angular) {
 
 void RobotDriving::go() {
   if (!start) {
+    // If not started, ensure robot is stopped
     setSpeed(0.0, 0.0);
     return;
-  } else {
-    analyzeSituation();
-    setSpeed(1.0, 1.0);
   }
 
+  // If manual control is active, the motor values are set directly
+  // by the button handlers in MainWindow. We don't need to modify
+  // them here.
+
+  // For autonomous operation, we would analyze the situation and set speeds
+  // based on the current task
+  analyzeSituation();
 }
 
 void RobotDriving::analyzeSituation() {
-  if(!master_msg_.slam){
-    situation = SLAM;
-  }
-}
+  // This is where the autonomous driving logic would go
+  // For now, we'll just have a placeholder implementation
 
+  // Flag-based state transitions
+  if (master_msg_.slam) {
+    situation = Situation::SLAM;
+  } else if (master_msg_.qr) {
+    situation = Situation::RECOGNIZE_QR;
+  } else if (master_msg_.lift) {
+    situation = Situation::LIFT_PARCEL;
+  }
+
+  // In a full implementation, this would have more sophisticated
+  // logic for path planning, obstacle avoidance, etc.
+}
 
 }  // namespace robot_master
