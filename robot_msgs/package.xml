@@ -10,7 +10,7 @@
   <maintainer email="hong091788@naver.com">hyeon</maintainer>
   <author>hyeon</author>
   <license>Apache-2.0</license>
-  
+
   <buildtool_depend>ament_cmake</buildtool_depend>
   <build_depend>rosidl_default_generators</build_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
@@ -19,6 +19,8 @@
   <depend>builtin_interfaces</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>action_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

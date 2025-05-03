@@ -27,6 +27,7 @@
 #include "robot_msgs/msg/master_msg.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "task_manager.hpp"
 /*****************************************************************************
 ** Class
 *****************************************************************************/
@@ -39,8 +40,19 @@ class QNode : public QThread {
   QNode();
   ~QNode();
 
-  RobotDriving driving_;
+  // ROS2 initialization
+  void initPubSub();
+
+  // Task management
   void setItemInfo(const std::string& item);
+  void startFindParcelTask();
+  void cancelTask();
+
+  // Robot control
+  void turtleRun();
+
+  RobotDriving driving_;
+  std::shared_ptr<TaskManager> task_manager_;
 
  protected:
   void run();
@@ -48,20 +60,21 @@ class QNode : public QThread {
  private:
   std::shared_ptr<rclcpp::Node> node;
 
-  void initPubSub();
-  void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
-  void turtleRun();
-
-  // topic
+  // Publishers
   rclcpp::Publisher<robot_msgs::msg::MasterMsg>::SharedPtr pub_master;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_parcel_info;
 
+  // Subscribers
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
+
+  // Callback functions
+  void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
 
  Q_SIGNALS:
   void rosShutDown();
   void dataReceived();
+  void logMessage(const QString& message);
+  void taskStateChanged(int state);
 };
 
 }  // namespace robot_master
