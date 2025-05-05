@@ -53,7 +53,17 @@ void MainWindow::updateData() {
   if (qnode->task_manager_) {
     auto lift_controller = qnode->task_manager_->getLiftController();
     if (lift_controller) {
-      ui->liftHeightValue->setText(QString::number(lift_controller->getCurrentHeight()));
+      double height = lift_controller->getCurrentHeight();
+      ui->liftHeightValue->setText(QString::number(height, 'f', 2));
+
+      // 리프트 높이에 따른 색상 변경 (옵션)
+      if (height > 0.4) {
+        ui->liftHeightValue->setStyleSheet("color: #a3be8c;");  // 녹색
+      } else if (height > 0.2) {
+        ui->liftHeightValue->setStyleSheet("color: #ebcb8b;");  // 노랑
+      } else {
+        ui->liftHeightValue->setStyleSheet("color: #d8dee9;");  // 기본
+      }
     }
   }
 }
@@ -212,7 +222,10 @@ void MainWindow::on_emergencyStopButton_clicked() {
   appendLog("비상 정지 명령 실행");
 }
 
-void MainWindow::on_liftUpButton_clicked() {
+// on_liftUpButton_clicked와 on_liftDownButton_clicked 함수는 제거하고
+// pressed/released 함수만 사용합니다.
+
+void MainWindow::on_liftUpButton_pressed() {
   if (qnode->task_manager_) {
     auto lift_controller = qnode->task_manager_->getLiftController();
     if (lift_controller) {
@@ -226,7 +239,7 @@ void MainWindow::on_liftUpButton_clicked() {
   }
 }
 
-void MainWindow::on_liftDownButton_clicked() {
+void MainWindow::on_liftDownButton_pressed() {
   if (qnode->task_manager_) {
     auto lift_controller = qnode->task_manager_->getLiftController();
     if (lift_controller) {
@@ -237,6 +250,26 @@ void MainWindow::on_liftDownButton_clicked() {
     }
   } else {
     appendLog("작업 관리자가 초기화되지 않았습니다");
+  }
+}
+
+void MainWindow::on_liftUpButton_released() {
+  if (qnode->task_manager_) {
+    auto lift_controller = qnode->task_manager_->getLiftController();
+    if (lift_controller) {
+      lift_controller->stop();
+      appendLog("리프트 정지");
+    }
+  }
+}
+
+void MainWindow::on_liftDownButton_released() {
+  if (qnode->task_manager_) {
+    auto lift_controller = qnode->task_manager_->getLiftController();
+    if (lift_controller) {
+      lift_controller->stop();
+      appendLog("리프트 정지");
+    }
   }
 }
 

@@ -15,12 +15,12 @@
 
 #include <QDebug>
 #include <QMainWindow>
+#include <QScrollBar>
+#include <QTime>
 
 #include "QIcon"
 #include "qnode.hpp"
 #include "ui_mainwindow.h"
-#include <QTime>
-#include <QScrollBar>
 /*****************************************************************************
 ** Interface [MainWindow]
 *****************************************************************************/
@@ -55,9 +55,11 @@ class MainWindow : public QMainWindow {
   void on_stopButton_clicked();
   void on_emergencyStopButton_clicked();
 
-  // 리프트 버튼 핸들러
-  void on_liftUpButton_clicked();
-  void on_liftDownButton_clicked();
+  // 리프트 버튼 핸들러 - 누르는 동안, 뗄 때 이벤트 추가
+  void on_liftUpButton_pressed();
+  void on_liftDownButton_pressed();
+  void on_liftUpButton_released();
+  void on_liftDownButton_released();
 
   // 검색 버튼 핸들러
   void on_pushButton_findParcel_clicked();

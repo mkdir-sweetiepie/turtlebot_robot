@@ -10,163 +10,100 @@
 
 namespace robot_master {
 
-LiftController::LiftController(std::shared_ptr<rclcpp::Node> node) : node_(node), lift_status_(LiftStatus::DOWN), current_height_(0.0) {
-  // Initialize the client for LiftAction
-  action_client_ = rclcpp_action::create_client<robot_msgs::action::LiftAction>(node_, "lift_control");
+LiftController::LiftController(std::shared_ptr<rclcpp::Node> node) : node_(node), current_height_(0.0), current_command_(0.0) {
+  // 리프트 명령 퍼블리셔 초기화
+  lift_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_lift_vel", 10);
 
-  // Initialize the lift position publisher
-  lift_position_pub_ = node_->create_publisher<std_msgs::msg::Float32>("lift_position", 10);
+  // 리프트 높이 구독자 초기화 (실제 로봇에서 사용)
+  lift_height_sub_ = node_->create_subscription<std_msgs::msg::Float32>("lift_height", 10, std::bind(&LiftController::heightCallback, this, std::placeholders::_1));
 
-  // Start the position update timer (10 Hz)
-  position_timer_ = node_->create_wall_timer(std::chrono::milliseconds(100), std::bind(&LiftController::publishLiftPosition, this));
+  // 시뮬레이션용 타이머 (실제 하드웨어가 없는 경우)
+  sim_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50), std::bind(&LiftController::updateSimulation, this));
 
-  RCLCPP_INFO(node_->get_logger(), "Lift controller initialized");
+  RCLCPP_INFO(node_->get_logger(), "리프트 컨트롤러가 초기화되었습니다");
 }
 
 LiftController::~LiftController() {
-  // Make sure the lift is down when destroying the controller
-  if (lift_status_ != LiftStatus::DOWN) {
-    RCLCPP_WARN(node_->get_logger(), "Lift controller being destroyed while lift is not down");
-  }
+  // 컨트롤러 소멸 시 모터 정지
+  stop();
 }
 
 void LiftController::moveUp() {
-  if (lift_status_ == LiftStatus::MOVING) {
-    RCLCPP_WARN(node_->get_logger(), "Lift is already moving");
+  if (current_height_ >= MAX_HEIGHT) {
+    RCLCPP_WARN(node_->get_logger(), "리프트가 최대 높이에 도달했습니다 (%.2f m)", MAX_HEIGHT);
+    stop();
     return;
   }
 
-  if (lift_status_ == LiftStatus::UP) {
-    RCLCPP_INFO(node_->get_logger(), "Lift is already up");
-    return;
-  }
-
-  auto goal = robot_msgs::action::LiftAction::Goal();
-  goal.command = "up";
-  goal.target_height = MAX_HEIGHT;
-
-  RCLCPP_INFO(node_->get_logger(), "Sending lift up command");
-
-  lift_status_ = LiftStatus::MOVING;
-  sendLiftGoal(goal);
+  RCLCPP_INFO(node_->get_logger(), "리프트 올림");
+  current_command_ = LIFT_SPEED;
+  publishLiftCommand(LIFT_SPEED);
 }
 
 void LiftController::moveDown() {
-  if (lift_status_ == LiftStatus::MOVING) {
-    RCLCPP_WARN(node_->get_logger(), "Lift is already moving");
+  if (current_height_ <= MIN_HEIGHT) {
+    RCLCPP_WARN(node_->get_logger(), "리프트가 최소 높이에 도달했습니다 (%.2f m)", MIN_HEIGHT);
+    stop();
     return;
   }
 
-  if (lift_status_ == LiftStatus::DOWN) {
-    RCLCPP_INFO(node_->get_logger(), "Lift is already down");
-    return;
-  }
-
-  auto goal = robot_msgs::action::LiftAction::Goal();
-  goal.command = "down";
-  goal.target_height = 0.0;
-
-  RCLCPP_INFO(node_->get_logger(), "Sending lift down command");
-
-  lift_status_ = LiftStatus::MOVING;
-  sendLiftGoal(goal);
+  RCLCPP_INFO(node_->get_logger(), "리프트 내림");
+  current_command_ = -LIFT_SPEED;
+  publishLiftCommand(-LIFT_SPEED);
 }
 
 void LiftController::stop() {
-  if (lift_status_ != LiftStatus::MOVING) {
-    RCLCPP_INFO(node_->get_logger(), "Lift is not moving");
-    return;
-  }
-
-  auto goal = robot_msgs::action::LiftAction::Goal();
-  goal.command = "stop";
-  goal.target_height = current_height_;
-
-  RCLCPP_INFO(node_->get_logger(), "Sending lift stop command");
-
-  sendLiftGoal(goal);
+  RCLCPP_INFO(node_->get_logger(), "리프트 정지");
+  current_command_ = 0.0;
+  publishLiftCommand(0.0);
 }
 
-void LiftController::sendLiftGoal(const robot_msgs::action::LiftAction::Goal& goal) {
-  // Wait for action server to be available
-  if (!action_client_->wait_for_action_server(std::chrono::seconds(1))) {
-    RCLCPP_ERROR(node_->get_logger(), "Lift action server not available");
-    lift_status_ = (current_height_ < 0.1) ? LiftStatus::DOWN : LiftStatus::UP;
-    return;
-  }
+void LiftController::publishLiftCommand(double velocity) {
+  auto msg = std::make_unique<geometry_msgs::msg::Twist>();
+  msg->linear.x = 0.0;
+  msg->linear.y = 0.0;
+  msg->linear.z = velocity;  // Z축을 리프트 움직임에 사용
+  msg->angular.x = 0.0;
+  msg->angular.y = 0.0;
+  msg->angular.z = 0.0;
 
-  // Send the goal
-  auto send_goal_options = rclcpp_action::Client<robot_msgs::action::LiftAction>::SendGoalOptions();
-
-  // Set callbacks for goal response, feedback, and result
-  send_goal_options.goal_response_callback = std::bind(&LiftController::goalResponseCallback, this, std::placeholders::_1);
-
-  send_goal_options.feedback_callback = std::bind(&LiftController::feedbackCallback, this, std::placeholders::_1, std::placeholders::_2);
-
-  send_goal_options.result_callback = std::bind(&LiftController::resultCallback, this, std::placeholders::_1);
-
-  // Send the goal
-  action_client_->async_send_goal(goal, send_goal_options);
+  lift_cmd_pub_->publish(std::move(msg));
 }
 
-void LiftController::goalResponseCallback(const LiftGoalHandle::SharedPtr& goal_handle) {
-  if (!goal_handle) {
-    lift_status_ = (current_height_ < 0.1) ? LiftStatus::DOWN : LiftStatus::UP;
-    RCLCPP_ERROR(node_->get_logger(), "Goal was rejected by the lift action server");
-    return;
-  }
+void LiftController::heightCallback(const std_msgs::msg::Float32::SharedPtr msg) {
+  // 실제 로봇에서 높이 값 업데이트
+  current_height_ = msg->data;
 
-  RCLCPP_INFO(node_->get_logger(), "Lift goal accepted by the server");
-}
-
-void LiftController::feedbackCallback(const LiftGoalHandle::SharedPtr& goal_handle, const std::shared_ptr<const robot_msgs::action::LiftAction::Feedback> feedback) {
-  current_height_ = feedback->current_height;
-
-  // Update status based on height
-  if (current_height_ < 0.1) {
-    lift_status_ = LiftStatus::DOWN;
-  } else if (std::abs(current_height_ - MAX_HEIGHT) < 0.1) {
-    lift_status_ = LiftStatus::UP;
-  } else {
-    lift_status_ = LiftStatus::MOVING;
-  }
-
-  RCLCPP_DEBUG(node_->get_logger(), "Lift height: %.2f", current_height_);
-}
-
-void LiftController::resultCallback(const LiftGoalHandle::WrappedResult& result) {
-  switch (result.code) {
-    case rclcpp_action::ResultCode::SUCCEEDED:
-      RCLCPP_INFO(node_->get_logger(), "Lift action succeeded");
-      if (current_height_ < 0.1) {
-        lift_status_ = LiftStatus::DOWN;
-      } else if (std::abs(current_height_ - MAX_HEIGHT) < 0.1) {
-        lift_status_ = LiftStatus::UP;
-      }
-      break;
-    case rclcpp_action::ResultCode::ABORTED:
-      RCLCPP_ERROR(node_->get_logger(), "Lift action was aborted");
-      lift_status_ = (current_height_ < 0.1) ? LiftStatus::DOWN : LiftStatus::UP;
-      break;
-    case rclcpp_action::ResultCode::CANCELED:
-      RCLCPP_INFO(node_->get_logger(), "Lift action was canceled");
-      lift_status_ = (current_height_ < 0.1) ? LiftStatus::DOWN : LiftStatus::UP;
-      break;
-    default:
-      RCLCPP_ERROR(node_->get_logger(), "Unknown result code from lift action");
-      lift_status_ = (current_height_ < 0.1) ? LiftStatus::DOWN : LiftStatus::UP;
-      break;
+  // 한계값 확인
+  if (current_height_ >= MAX_HEIGHT && current_command_ > 0) {
+    stop();
+    RCLCPP_INFO(node_->get_logger(), "리프트가 최대 높이에 도달했습니다");
+  } else if (current_height_ <= MIN_HEIGHT && current_command_ < 0) {
+    stop();
+    RCLCPP_INFO(node_->get_logger(), "리프트가 최소 높이에 도달했습니다");
   }
 }
 
-void LiftController::publishLiftPosition() {
-  auto msg = std_msgs::msg::Float32();
-  msg.data = current_height_;
-  lift_position_pub_->publish(msg);
+void LiftController::updateSimulation() {
+  // 실제 하드웨어가 없는 경우 시뮬레이션 업데이트
+  if (current_command_ != 0.0) {
+    // 명령에 따라 높이 업데이트 (50ms마다 호출)
+    current_height_ += current_command_ * 0.05;  // 속도 * 시간 = 거리
+
+    // 한계값 확인
+    if (current_height_ > MAX_HEIGHT) {
+      current_height_ = MAX_HEIGHT;
+      stop();
+      RCLCPP_DEBUG(node_->get_logger(), "시뮬레이션 리프트가 최대 높이에 도달했습니다");
+    } else if (current_height_ < MIN_HEIGHT) {
+      current_height_ = MIN_HEIGHT;
+      stop();
+      RCLCPP_DEBUG(node_->get_logger(), "시뮬레이션 리프트가 최소 높이에 도달했습니다");
+    }
+
+    // 높이 정보를 ROS 로그로 출력 (디버그용)
+    RCLCPP_DEBUG(node_->get_logger(), "현재 리프트 높이: %.2f m", current_height_);
+  }
 }
-
-double LiftController::getCurrentHeight() const { return current_height_; }
-
-LiftStatus LiftController::getStatus() const { return lift_status_; }
 
 }  // namespace robot_master
