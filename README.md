@@ -22,27 +22,27 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
 
 1. **Clone the Repository**
     ```bash
-    $ source /opt/ros/humble/setup.bash
-    $ mkdir -p ~/turtlebot3_ws/src
-    $ cd ~/turtlebot3_ws/src/
-    $ git clone -b humble https://github.com/ROBOTIS-GIT/DynamixelSDK.git
-    $ git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3_msgs.git
-    $ git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3.git
-    $ sudo apt install python3-colcon-common-extensions
-    $ cd ~/turtlebot3_ws
-    $ colcon build --symlink-install
-    $ echo 'source ~/turtlebot3_ws/install/setup.bash' >> ~/.bashrc
-    $ source ~/.bashrc
+    source /opt/ros/humble/setup.bash
+    mkdir -p ~/turtlebot3_ws/src
+    cd ~/turtlebot3_ws/src/
+    git clone -b humble https://github.com/ROBOTIS-GIT/DynamixelSDK.git
+    git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3_msgs.git
+    git clone https://github.com/mkdir-sweetiepie/turtlebot3
+    sudo apt install python3-colcon-common-extensions
+    cd ~/turtlebot3_ws
+    colcon build --symlink-install
+    echo 'source ~/turtlebot3_ws/install/setup.bash' >> ~/.bashrc
+    source ~/.bashrc
     ```
 
 2. **Install Dependencies**
     ```bash
-    $ sudo apt install ros-humble-gazebo-*
-    $ sudo apt install ros-humble-cartographer
-    $ sudo apt install ros-humble-cartographer-ros
-    $ sudo apt install ros-humble-navigation2
-    $ sudo apt install ros-humble-nav2-bringup
-    $ sudo apt install libzbar-dev libyaml-cpp-dev qt5-default
+    sudo apt install ros-humble-gazebo-*
+    sudo apt install ros-humble-cartographer
+    sudo apt install ros-humble-cartographer-ros
+    sudo apt install ros-humble-navigation2
+    sudo apt install ros-humble-nav2-bringup
+    sudo apt install libzbar-dev libyaml-cpp-dev qt5-default
     ```
 
 
