@@ -9,63 +9,57 @@
 #ifndef ROBOT_MASTER_LIFT_CONTROLLER_HPP
 #define ROBOT_MASTER_LIFT_CONTROLLER_HPP
 
-#include <functional>
 #include <memory>
-#include <string>
 
+#include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp_action/rclcpp_action.hpp"
-#include "robot_msgs/action/lift_action.hpp"
 #include "std_msgs/msg/float32.hpp"
 
 namespace robot_master {
-
-enum class LiftStatus { UP, DOWN, MOVING };
 
 class LiftController {
  public:
   explicit LiftController(std::shared_ptr<rclcpp::Node> node);
   ~LiftController();
 
-  // Control methods
+  // 단순 제어 메서드
   void moveUp();
   void moveDown();
   void stop();
 
-  // Status methods
-  double getCurrentHeight() const;
-  LiftStatus getStatus() const;
+  // 현재 높이 조회
+  double getCurrentHeight() const { return current_height_; }
 
  private:
-  // Constants
-  static constexpr double MAX_HEIGHT = 0.25;  // meters
+  // 상수
+  static constexpr double LIFT_SPEED = 0.3;  // m/s
+  static constexpr double MAX_HEIGHT = 0.5;  // 최대 높이 (미터)
+  static constexpr double MIN_HEIGHT = 0.0;  // 최소 높이 (미터)
 
-  // Node pointer
+  // 노드 포인터
   std::shared_ptr<rclcpp::Node> node_;
 
-  // Action client for lift control
-  using LiftAction = robot_msgs::action::LiftAction;
-  using LiftGoalHandle = rclcpp_action::ClientGoalHandle<LiftAction>;
-  rclcpp_action::Client<LiftAction>::SharedPtr action_client_;
+  // 리프트 명령 퍼블리셔
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr lift_cmd_pub_;
 
-  // Publisher for lift position
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr lift_position_pub_;
+  // 리프트 높이 구독자
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr lift_height_sub_;
 
-  // Timer for publishing lift position
-  rclcpp::TimerBase::SharedPtr position_timer_;
+  // 현재 높이 및 명령 상태
+  double current_height_ = 0.0;
+  double current_command_ = 0.0;
 
-  // Current status and position
-  LiftStatus lift_status_;
-  double current_height_;
+  // 시뮬레이션용 타이머
+  rclcpp::TimerBase::SharedPtr sim_timer_;
 
-  // Private methods
-  void sendLiftGoal(const LiftAction::Goal& goal);
-  void publishLiftPosition();
+  // 헬퍼 메서드
+  void publishLiftCommand(double velocity);
 
-  // Action client callbacks
-  void goalResponseCallback(const LiftGoalHandle::SharedPtr& goal_handle);
-  void feedbackCallback(const LiftGoalHandle::SharedPtr& goal_handle, const std::shared_ptr<const LiftAction::Feedback> feedback);
-  void resultCallback(const LiftGoalHandle::WrappedResult& result);
+  // 높이 구독 콜백
+  void heightCallback(const std_msgs::msg::Float32::SharedPtr msg);
+
+  // 시뮬레이션 업데이트 (실제 하드웨어가 없는 경우)
+  void updateSimulation();
 };
 
 }  // namespace robot_master
