@@ -42,15 +42,26 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     sudo apt install ros-humble-cartographer-ros
     sudo apt install ros-humble-navigation2
     sudo apt install ros-humble-nav2-bringup
-    sudo apt install libzbar-dev libyaml-cpp-dev qt5-default
+    sudo apt install qtcreator
+    sudo apt install libzbar-dev libyaml-cpp-dev
     ```
 
 
 ## Execution
-- Launch TurtleBot3 Hardware or Simulation
+- raspberry pi 새 터미널 열어서
+    ssh ubuntu@192.168.0.2
+    입력해주고 yes 한뒤 비밀번호 입력
     ```bash
     # Hardware
     ros2 launch turtlebot3_bringup robot.launch.py
+    ```
+- Launch TurtleBot3 Hardware or Simulation
+    ros domain 12로 맞추기
+    ```bash
+    # Master
+    ros2 run robot_master robot_master
+    # Vision
+    ros2 run robot_vision robot_vision
     # Simulation
     ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
     ```
