@@ -87,7 +87,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     
 2. 새 터미널 열어서 ros domain 12로 맞추기<br>
 
-3. Master & Vision
+3. Master & Vision<br>
     ```bash
     # Master
     ros2 run robot_master robot_master
@@ -96,10 +96,14 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     # Simulation
     ros2 launch turtlebot3_gazebo empty_world.launch.py
     ```
-
+    
+4. Exit[raspberry pi 터미널에서] <br>
+   ```bash
+   sudo shutdown -h now
+   ```
 License<br>
 This project is licensed under the Apache License 2.0 - see the LICENSE file for details.<br>
 Contributors<br>
-[Jeongwoogyeong] [Ohgahyun] [] [] [Hongjihyeon]
+[Jeongwoogyeong] [Ohgahyun] [Yimdonggyun] [] [Hongjihyeon]
 
 
