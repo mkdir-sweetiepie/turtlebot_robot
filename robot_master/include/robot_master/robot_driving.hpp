@@ -11,12 +11,12 @@
 
 #include <string>
 
+#include "builtin_interfaces/msg/time.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
 
 namespace robot_master {
-
-// 열거형 이름 변경: DrivingSituation -> Situation
 enum class Situation { NONE, SLAM, SEARCH_PARCEL, RECOGNIZE_QR, NAVIGATION, LIFT_PARCEL, RETURN_TO_BASE };
 
 class RobotDriving {
@@ -27,8 +27,14 @@ class RobotDriving {
   void setSpeed(double linear, double angular);
   void analyzeSituation();
 
+  // void updateSimTimestamp();
+  // void updateSimTimestampROS(const builtin_interfaces::msg::Time& time);
+
   // Robot speed command
   geometry_msgs::msg::Twist motor_value_;
+
+  // Simulated robot speed command
+  //geometry_msgs::msg::TwistStamped motor_value_sim_;
 
   // Master message for communication
   robot_msgs::msg::MasterMsg master_msg_;
@@ -37,7 +43,7 @@ class RobotDriving {
   static bool start;
 
  private:
-  Situation situation;  // DrivingSituation -> Situation으로 변경
+  Situation situation;
 };
 
 }  // namespace robot_master

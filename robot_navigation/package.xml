@@ -29,7 +29,7 @@
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>nav2_bt_navigator</exec_depend>
   <exec_depend>nav2_controller</exec_depend>
-  <exec_depend>nav2_recoveries</exec_depend>
+
 
   <export>
     <build_type>ament_cmake</build_type>

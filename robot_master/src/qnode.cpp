@@ -38,6 +38,7 @@ void QNode::run() {
   rclcpp::WallRate loop_rate(20);
   while (rclcpp::ok()) {
     rclcpp::spin_some(node);
+
     turtleRun();
     Q_EMIT dataReceived();
     // Update UI with task state if changed
@@ -92,7 +93,12 @@ void QNode::run() {
 void QNode::initPubSub() {
   pub_master = node->create_publisher<robot_msgs::msg::MasterMsg>("turtle_master", 100);
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+  //pub_motor_sim = node->create_publisher<geometry_msgs::msg::TwistStamped>("sim_cmd_vel", 10);
   sub_vision = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 100, std::bind(&QNode::visionCallback, this, std::placeholders::_1));
+  nav_client_ = node->create_client<robot_msgs::srv::NavigateToParcel>("navigate_to_parcel");
+
+  // 시뮬레이션 모드 파라미터 추가 (기본값: true)
+  node->declare_parameter("sim_mode", true);
 }
 
 void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg) {
@@ -105,19 +111,13 @@ void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vis
   }
 }
 
-void QNode::setItemInfo(const std::string& item) {
-  driving_.master_msg_.item = item;
-  QString log_msg = QString("Item set to: %1").arg(QString::fromStdString(item));
-  Q_EMIT logMessage(log_msg);
-}
+void QNode::setItemInfo(const std::string& item) { driving_.master_msg_.item = item; }
 
 void QNode::startFindParcelTask() {
   if (driving_.master_msg_.item.empty()) {
     Q_EMIT logMessage("Cannot start task: No item ID specified");
     return;
   }
-
-  Q_EMIT logMessage(QString("Starting task to find parcel: %1").arg(QString::fromStdString(driving_.master_msg_.item)));
 
   task_manager_->startFindParcelTask(driving_.master_msg_.item);
 }
@@ -129,14 +129,50 @@ void QNode::cancelTask() {
 
 void QNode::turtleRun() {
   driving_.go();
+
   pub_motor->publish(driving_.motor_value_);
+
+  bool sim_mode = true;
+  node->get_parameter("sim_mode", sim_mode);
+
+  // if (sim_mode) {
+  //   builtin_interfaces::msg::Time current_time = node->now();
+  //   driving_.updateSimTimestampROS(current_time);
+
+  //   pub_motor_sim->publish(driving_.motor_value_sim_);
+
+  //   RCLCPP_DEBUG(node->get_logger(), "시뮬레이션 명령: linear.x=%.2f, angular.z=%.2f", driving_.motor_value_sim_.twist.linear.x, driving_.motor_value_sim_.twist.angular.z);
+  // }
+
   pub_master->publish(driving_.master_msg_);
 
-  // Only for debugging - simple navigation goal
   if (driving_.master_msg_.slam) {
     RCLCPP_INFO(node->get_logger(), "Setting navigation goal (for debugging): x=1.0, y=2.0, yaw=90.0");
     driving_.master_msg_.slam = false;  // Reset flag to prevent repeated goals
   }
+}
+
+void QNode::navigateToPosition(double x, double y, double yaw) {
+  if (!nav_client_->wait_for_service(std::chrono::seconds(1))) {
+    Q_EMIT logMessage("내비게이션 서비스를 사용할 수 없습니다");
+    return;
+  }
+
+  auto request = std::make_shared<robot_msgs::srv::NavigateToParcel::Request>();
+  request->x = x;
+  request->y = y;
+  request->yaw = yaw;
+
+  Q_EMIT logMessage(QString("내비게이션 요청 전송: x=%.2f, y=%.2f, yaw=%.2f").arg(x).arg(y).arg(yaw));
+
+  auto future = nav_client_->async_send_request(request, [this](rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedFuture future) {
+    auto response = future.get();
+    QString result_msg = QString("내비게이션 결과: %1").arg(response->success ? "성공" : "실패");
+    if (!response->message.empty()) {
+      result_msg += QString(" - %1").arg(QString::fromStdString(response->message));
+    }
+    Q_EMIT logMessage(result_msg);
+  });
 }
 
 }  // namespace robot_master
