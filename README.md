@@ -18,9 +18,20 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
 - Qt5
 - Gazebo
 
-## Installation
+## Installation[Remote PC]
 
-1. **Clone the Repository**
+1. **Install Dependent ROS 2 Packages**
+    ```bash
+    sudo apt install ros-humble-gazebo-*
+    sudo apt install ros-humble-cartographer
+    sudo apt install ros-humble-cartographer-ros
+    sudo apt install ros-humble-navigation2
+    sudo apt install ros-humble-nav2-bringup
+    sudo apt install qtcreator
+    sudo apt install libzbar-dev libyaml-cpp-dev
+    ```
+
+2. **Install TurtleBot3 Packages**
     ```bash
     source /opt/ros/humble/setup.bash
     mkdir -p ~/turtlebot3_ws/src
@@ -34,29 +45,48 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     echo 'source ~/turtlebot3_ws/install/setup.bash' >> ~/.bashrc
     source ~/.bashrc
     ```
-
-2. **Install Dependencies**
+    
+3. **Environment Configuration**
     ```bash
-    sudo apt install ros-humble-gazebo-*
-    sudo apt install ros-humble-cartographer
-    sudo apt install ros-humble-cartographer-ros
-    sudo apt install ros-humble-navigation2
-    sudo apt install ros-humble-nav2-bringup
-    sudo apt install qtcreator
-    sudo apt install libzbar-dev libyaml-cpp-dev
+    echo 'export ROS_DOMAIN_ID=12' >> ~/.bashrc
+    echo 'export TURTLEBOT3_MODEL=burger' >> ~/.bashrc
+    echo 'source /usr/share/gazebo/setup.sh' >> ~/.bashrc
+    echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc
+    source ~/.bashrc
     ```
-
-
-## Execution
-- raspberry pi 새 터미널 열어서
-    ssh ubuntu@192.168.0.2
-    입력해주고 yes 한뒤 비밀번호 입력
+    
+4. **Install Gazebo Simulation[Fortress]
     ```bash
-    # Hardware
+    sudo apt install ros-humble-ros-gz
+    sudo apt install ros-humble-gz-ros2-control
+    sudo apt install ros-humble-twist-mux
+    sudo apt install ros-humble-twist-stamper
+    sudo apt install ros-humble-ros2-control
+    sudo apt install ros-humble-ros2-controllers
+    cd ~/turtlebot3_ws/src/
+    https://github.com/ROBOTIS-GIT/turtlebot3_simulations.git
+    sudo rosdep init
+    rosdep install --from-paths . -i -y
+    cd ~/turtlebot3_ws/
+    colcon build --symlink-install
+    source ~/turtlebot3_ws/install/setup.bash
+    ```
+   
+## Execution[Remote PC]
+1. 새 터미널 열어서<br>
+    ```bash
+    ssh ubuntu@192.168.0.2
+    ```
+   입력해주고 yes 한뒤 비밀번호 입력<br>
+    ```bash
+    start
+    또는
     ros2 launch turtlebot3_bringup robot.launch.py
     ```
-- Launch TurtleBot3 Hardware or Simulation
-    ros domain 12로 맞추기
+    
+2. 새 터미널 열어서 ros domain 12로 맞추기<br>
+
+3. Master & Vision
     ```bash
     # Master
     ros2 run robot_master robot_master
