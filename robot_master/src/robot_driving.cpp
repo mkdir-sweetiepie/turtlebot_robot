@@ -21,7 +21,17 @@ RobotDriving::RobotDriving() : situation(Situation::NONE) {
   motor_value_.angular.y = 0.0;
   motor_value_.angular.z = 0.0;
 
-  // Initialize master message flags
+  // // Initialize simulation motor values
+  // motor_value_sim_.twist.linear.x = 0.0;
+  // motor_value_sim_.twist.linear.y = 0.0;
+  // motor_value_sim_.twist.linear.z = 0.0;
+  // motor_value_sim_.twist.angular.x = 0.0;
+  // motor_value_sim_.twist.angular.y = 0.0;
+  // motor_value_sim_.twist.angular.z = 0.0;
+
+  // motor_value_sim_.header.frame_id = "base_link";
+  // updateSimTimestamp();
+
   master_msg_.slam = false;
   master_msg_.qr = false;
   master_msg_.lift = false;
@@ -31,7 +41,19 @@ RobotDriving::RobotDriving() : situation(Situation::NONE) {
 void RobotDriving::setSpeed(double linear, double angular) {
   motor_value_.linear.x = linear;
   motor_value_.angular.z = angular;
+
+  // motor_value_sim_.twist.linear.x = linear;
+  // motor_value_sim_.twist.angular.z = angular;
+
+  // updateSimTimestamp();
 }
+
+// void RobotDriving::updateSimTimestamp() {
+//   motor_value_sim_.header.stamp.sec = 0;
+//   motor_value_sim_.header.stamp.nanosec = 0;
+// }
+
+// void RobotDriving::updateSimTimestampROS(const builtin_interfaces::msg::Time& time) { motor_value_sim_.header.stamp = time; }
 
 void RobotDriving::go() {
   if (!start) {
@@ -40,20 +62,10 @@ void RobotDriving::go() {
     return;
   }
 
-  // If manual control is active, the motor values are set directly
-  // by the button handlers in MainWindow. We don't need to modify
-  // them here.
-
-  // For autonomous operation, we would analyze the situation and set speeds
-  // based on the current task
   analyzeSituation();
 }
 
 void RobotDriving::analyzeSituation() {
-  // This is where the autonomous driving logic would go
-  // For now, we'll just have a placeholder implementation
-
-  // Flag-based state transitions
   if (master_msg_.slam) {
     situation = Situation::SLAM;
   } else if (master_msg_.qr) {
@@ -61,9 +73,6 @@ void RobotDriving::analyzeSituation() {
   } else if (master_msg_.lift) {
     situation = Situation::LIFT_PARCEL;
   }
-
-  // In a full implementation, this would have more sophisticated
-  // logic for path planning, obstacle avoidance, etc.
 }
 
 }  // namespace robot_master

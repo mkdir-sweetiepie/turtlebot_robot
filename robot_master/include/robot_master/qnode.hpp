@@ -23,9 +23,11 @@
 #include <turtlebot3_msgs/msg/sensor_state.hpp>
 
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "robot_driving.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
+#include "robot_msgs/srv/navigate_to_parcel.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "task_manager.hpp"
 /*****************************************************************************
@@ -47,6 +49,7 @@ class QNode : public QThread {
   void setItemInfo(const std::string& item);
   void startFindParcelTask();
   void cancelTask();
+  void navigateToPosition(double x, double y, double yaw);
 
   // Robot control
   void turtleRun();
@@ -63,9 +66,12 @@ class QNode : public QThread {
   // Publishers
   rclcpp::Publisher<robot_msgs::msg::MasterMsg>::SharedPtr pub_master;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
+  //rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr pub_motor_sim;
 
   // Subscribers
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
+
+  rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedPtr nav_client_;
 
   // Callback functions
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
