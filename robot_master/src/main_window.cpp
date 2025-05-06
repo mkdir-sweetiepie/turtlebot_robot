@@ -127,9 +127,8 @@ void MainWindow::on_forwardButton_pressed() {
   // RobotDriving::start를 true로 설정하여 로봇이 동작하도록 함
   RobotDriving::start = true;
 
-  // 직접 속도 설정
-  qnode->driving_.motor_value_.linear.x = -0.1;  // 전진 속도
-  qnode->driving_.motor_value_.angular.z = 0.0;
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(0.1, 0.0);  // 전진 속도
 
   // UI 업데이트
   ui->statusValueLabel->setText("이동 중: 전진");
@@ -143,8 +142,8 @@ void MainWindow::on_forwardButton_pressed() {
 void MainWindow::on_backwardButton_pressed() {
   RobotDriving::start = true;
 
-  qnode->driving_.motor_value_.linear.x = 0.1;  // 후진 속도
-  qnode->driving_.motor_value_.angular.z = 0.0;
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(-0.1, 0.0);  // 후진 속도
 
   ui->statusValueLabel->setText("이동 중: 후진");
   ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
@@ -157,8 +156,8 @@ void MainWindow::on_backwardButton_pressed() {
 void MainWindow::on_leftButton_pressed() {
   RobotDriving::start = true;
 
-  qnode->driving_.motor_value_.linear.x = 0.0;   // 회전 중 약간의 전진
-  qnode->driving_.motor_value_.angular.z = 1.0;  // 좌회전 속도
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(0.0, 1.0);  // 좌회전 속도
 
   ui->statusValueLabel->setText("이동 중: 좌회전");
   ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
@@ -171,8 +170,8 @@ void MainWindow::on_leftButton_pressed() {
 void MainWindow::on_rightButton_pressed() {
   RobotDriving::start = true;
 
-  qnode->driving_.motor_value_.linear.x = 0.0;    // 회전 중 약간의 전진
-  qnode->driving_.motor_value_.angular.z = -1.0;  // 우회전 속도
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(0.0, -1.0);  // 우회전 속도
 
   ui->statusValueLabel->setText("이동 중: 우회전");
   ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
@@ -186,9 +185,8 @@ void MainWindow::on_stopButton_clicked() {
   // RobotDriving::start를 false로 설정하여 go() 함수에서 로봇이 멈추도록 함
   RobotDriving::start = false;
 
-  // 직접 속도 0으로 설정
-  qnode->driving_.motor_value_.linear.x = 0.0;
-  qnode->driving_.motor_value_.angular.z = 0.0;
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(0.0, 0.0);
 
   ui->statusValueLabel->setText("정지");
   ui->statusValueLabel->setStyleSheet("color: #d8dee9;");
@@ -202,13 +200,8 @@ void MainWindow::on_emergencyStopButton_clicked() {
   // 긴급 정지: 모든 동작 중지
   RobotDriving::start = false;
 
-  // 모든 모터 속도 0으로 설정
-  qnode->driving_.motor_value_.linear.x = 0.0;
-  qnode->driving_.motor_value_.linear.y = 0.0;
-  qnode->driving_.motor_value_.linear.z = 0.0;
-  qnode->driving_.motor_value_.angular.x = 0.0;
-  qnode->driving_.motor_value_.angular.y = 0.0;
-  qnode->driving_.motor_value_.angular.z = 0.0;
+  // setSpeed 메서드 사용
+  qnode->driving_.setSpeed(0.0, 0.0);
 
   // 화면 표시 업데이트
   ui->statusValueLabel->setText("비상 정지");
