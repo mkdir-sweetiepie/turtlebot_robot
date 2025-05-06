@@ -99,6 +99,6 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
 License<br>
 This project is licensed under the Apache License 2.0 - see the LICENSE file for details.<br>
 Contributors<br>
-[Jeongwoogyeong][Ohgahyun][[Hongjihyeon]
+[Jeongwoogyeong] [Ohgahyun] [] [] [Hongjihyeon]
 
 
