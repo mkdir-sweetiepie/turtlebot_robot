@@ -73,7 +73,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     ```
    
 ## Execution[Remote PC]
-1. 새 터미널 열어서<br>
+1. 와이파이 BARAM_IPTIME5G로 맞췬뒤 새 터미널 열어서<br>
     ```bash
     ssh ubuntu@192.168.0.2
     ```
