@@ -39,6 +39,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     git clone -b humble https://github.com/ROBOTIS-GIT/DynamixelSDK.git
     git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3_msgs.git
     git clone https://github.com/mkdir-sweetiepie/turtlebot3
+    git clone https://github.com/mkdir-sweetiepie/turtlebot3_robot.git
     sudo apt install python3-colcon-common-extensions
     cd ~/turtlebot3_ws
     colcon build --symlink-install
