@@ -84,6 +84,11 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     또는
     ros2 launch turtlebot3_bringup robot.launch.py
     ```
+    ```bash
+    cam
+    또는
+    ros2 launch usb_cam camera.launch.py
+    ```
     
 2. 새 터미널 열어서 ros domain 12로 맞추기<br>
 
