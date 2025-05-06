@@ -96,9 +96,9 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
     ```
 
-License
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-Contributors
-[Hongjihyeon]
+License<br>
+This project is licensed under the Apache License 2.0 - see the LICENSE file for details.<br>
+Contributors<br>
+[Jeongwoogyeong][Ohgahyun][[Hongjihyeon]
 
 
