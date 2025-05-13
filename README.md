@@ -65,7 +65,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     sudo apt install ros-humble-ros2-control
     sudo apt install ros-humble-ros2-controllers
     cd ~/turtlebot3_ws/src/
-    git clone https://github.com/mkdir-sweetiepie/turtlebot3_simulations.git
+    git clone https://github.com/gahyun0425/turtlebot3_simulations
     sudo rosdep init
     rosdep install --from-paths . -i -y
     cd ~/turtlebot3_ws/
