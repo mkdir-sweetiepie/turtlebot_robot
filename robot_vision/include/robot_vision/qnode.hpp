@@ -46,11 +46,7 @@ class QNode : public QThread {
   ~QNode();
 
   Vision robot_vision_;
-  // cv::Mat getLatestImage() const;
 
-  // static constexpr int UDP_PORT = 3512;
-  // static constexpr int BUFFER_SIZE = 65507;
-  // static constexpr int FPS_HISTORY_SIZE = 10;
   cv::Mat* imgRaw = NULL;   // 원본 이미지 저장
   bool isreceived = false;  // 이미지 수신 여부
 
@@ -61,30 +57,16 @@ class QNode : public QThread {
   std::shared_ptr<rclcpp::Node> node;
 
   void initPubSub();
-  // void initUdpSocket();
-  // void receiveUdpImage();
-  // void updateFps();
-  // void processReceivedImage(const cv::Mat& image);
-
-  // int udp_socket{-1};
-  // cv::Mat raw_img;
-  // mutable std::mutex image_mutex;
-
-  // std::chrono::steady_clock::time_point last_fps_update;
-  // std::deque<double> fps_history;
 
   // topic
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pubImage;
   rclcpp::Publisher<robot_msgs::msg::VisionMsg>::SharedPtr vision_pub;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub;
-  //rclcpp::Subscription<robot_msgs::msg::MasterMsg>::SharedPtr subMaster;
 
   void callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img);
 
  Q_SIGNALS:
   void rosShutDown();
-  // void imageReceived(const cv::Mat& image);
-  // void fpsUpdated(int fps);
   void sigRcvImg();
 };
 
