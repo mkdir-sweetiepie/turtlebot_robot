@@ -99,7 +99,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     # Vision
     ros2 run robot_vision robot_vision
     # Navigation
-    ros2 launch robot_navigation waypoint_navigation.launch.py
+    ros2 launch robot_navigation navigation_launch.py
     ros2 run robot_navigation waypoint_navigator
     # Simulation
     ros2 launch turtlebot3_gazebo empty_world.launch.py
