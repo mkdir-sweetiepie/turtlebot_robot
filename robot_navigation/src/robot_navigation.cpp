@@ -1,148 +1,125 @@
 /**
- * @file /src/navigation_node.cpp
+ * @file /src/robot_navigation.cpp
  *
- * @brief Implementation for the navigation node.
+ * @brief Implementation of the robot navigation node.
  *
  * @date May 2025
  **/
 
-#include "../include/robot_navigation/robot_navigation.hpp"
+#include "robot_navigation/robot_navigation.hpp"
 
-namespace turtlebot_navigation {
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
-NavigationNode::NavigationNode() : Node("navigation_node") {
-  // Initialize the nav2 action client
-  navigate_client_ = rclcpp_action::create_client<NavigateAction>(this, "navigate_to_pose");
+#include "ament_index_cpp/get_package_share_directory.hpp"
+#include "yaml-cpp/yaml.h"
 
-  // Initialize the navigation service server
-  navigate_service_ = this->create_service<robot_msgs::srv::NavigateToParcel>(
-      "navigate_to_parcel", std::bind(&NavigationNode::handleNavigationRequest, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+namespace robot_navigation {
 
-  RCLCPP_INFO(this->get_logger(), "Navigation node initialized");
+RobotNavigation::RobotNavigation() : navigation_active_(false) {
+  // 웨이포인트 네비게이터 초기화
+  waypoint_navigator_ = std::make_shared<WaypointNavigator>();
+
+  // 파셀 위치 로드
+  loadParcelLocations();
 }
 
-void NavigationNode::handleNavigationRequest(const std::shared_ptr<rmw_request_id_t> /*request_header*/, const std::shared_ptr<robot_msgs::srv::NavigateToParcel::Request> request,
-                                             std::shared_ptr<robot_msgs::srv::NavigateToParcel::Response> response) {
-  RCLCPP_INFO(this->get_logger(), "Received navigation request: x=%.2f, y=%.2f, yaw=%.2f", request->x, request->y, request->yaw);
-
-  // Set up callback to handle the navigation result
-  auto callback = [this, response](bool success, const std::string& message) {
-    response->success = success;
-    response->message = message;
-
-    RCLCPP_INFO(this->get_logger(), "Navigation result: success=%d, message=%s", success, message.c_str());
-  };
-
-  // Send the navigation goal
-  sendNavigationGoal(request->x, request->y, request->yaw, callback);
-}
-
-void NavigationNode::sendNavigationGoal(double x, double y, double yaw, std::function<void(bool, const std::string&)> callback) {
-  // Store the callback
-  {
-    std::lock_guard<std::mutex> lock(callback_mutex_);
-    current_callback_ = callback;
+bool RobotNavigation::navigateToParcel(int parcel_id) {
+  if (navigation_active_) {
+    return false;  // 이미 네비게이션 중
   }
 
-  // Wait for the action server to be available
-  if (!navigate_client_->wait_for_action_server(std::chrono::seconds(5))) {
-    RCLCPP_ERROR(this->get_logger(), "Navigation action server not available");
-    callback(false, "Navigation action server not available");
-    return;
+  // 파셀 ID로 위치 찾기
+  auto it = parcel_locations_.find(parcel_id);
+  if (it == parcel_locations_.end()) {
+    return false;  // 파셀 ID가 존재하지 않음
   }
 
-  // Create the goal pose
-  auto goal_msg = NavigateAction::Goal();
-  goal_msg.pose.header.frame_id = "map";
-  goal_msg.pose.header.stamp = this->now();
+  // 파셀 위치 추출
+  double x = it->second.first;
+  double y = it->second.second;
 
-  // Set position
-  goal_msg.pose.pose.position.x = x;
-  goal_msg.pose.pose.position.y = y;
-  goal_msg.pose.pose.position.z = 0.0;
+  // 웨이포인트 설정
+  std::vector<Waypoint> waypoints;
+  waypoints.push_back({"시작 위치", 0.01, 0.0, 0.0});
+  waypoints.push_back({"파셀 위치", x, y, M_PI / 2});
+  waypoints.push_back({"시작 위치 (귀환)", 0.01, 0.0, 0.0});
 
-  // Convert yaw to quaternion
-  tf2::Quaternion quat;
-  quat.setRPY(0.0, 0.0, yaw * M_PI / 180.0);  // Convert degrees to radians
-  goal_msg.pose.pose.orientation = tf2::toMsg(quat);
+  // 웨이포인트 네비게이터 설정
+  waypoint_navigator_->setInitialPose(0.01, 0.0, 0.01, 1.0);
+  waypoint_navigator_->setWaypointsManually(waypoints);
 
-  RCLCPP_INFO(this->get_logger(), "Sending navigation goal: x=%.2f, y=%.2f, yaw=%.2f", x, y, yaw);
+  // 네비게이션 시작
+  bool success = waypoint_navigator_->navigateToWaypoints();
+  navigation_active_ = success;
 
-  // Setup send goal options
-  auto send_goal_options = rclcpp_action::Client<NavigateAction>::SendGoalOptions();
-  send_goal_options.goal_response_callback = std::bind(&NavigationNode::goalResponseCallback, this, std::placeholders::_1);
-  send_goal_options.feedback_callback = std::bind(&NavigationNode::feedbackCallback, this, std::placeholders::_1, std::placeholders::_2);
-  send_goal_options.result_callback = std::bind(&NavigationNode::resultCallback, this, std::placeholders::_1);
-
-  // Send the goal
-  navigate_client_->async_send_goal(goal_msg, send_goal_options);
+  return success;
 }
 
-void NavigationNode::goalResponseCallback(const NavigateGoalHandle::SharedPtr& goal_handle) {
-  if (!goal_handle) {
-    RCLCPP_ERROR(this->get_logger(), "Goal was rejected by the action server");
+bool RobotNavigation::isNavigating() const { return navigation_active_; }
 
-    std::lock_guard<std::mutex> lock(callback_mutex_);
-    if (current_callback_) {
-      current_callback_(false, "Goal was rejected by the action server");
-      current_callback_ = nullptr;
+bool RobotNavigation::navigateToCoordinate(double x, double y, double theta) {
+  if (navigation_active_) {
+    return false;  // 이미 네비게이션 중
+  }
+
+  // 웨이포인트 설정
+  std::vector<Waypoint> waypoints;
+  waypoints.push_back({"시작 위치", 0.01, 0.0, 0.0});
+  waypoints.push_back({"목표 위치", x, y, theta});
+  waypoints.push_back({"시작 위치 (귀환)", 0.01, 0.0, 0.0});
+
+  // 웨이포인트 네비게이터 설정
+  waypoint_navigator_->setInitialPose(0.01, 0.0, 0.01, 1.0);
+  waypoint_navigator_->setWaypointsManually(waypoints);
+
+  // 네비게이션 시작
+  bool success = waypoint_navigator_->navigateToWaypoints();
+  navigation_active_ = success;
+
+  return success;
+}
+
+void RobotNavigation::cancelNavigation() {
+  // 웨이포인트 네비게이션을 취소하는 로직을 구현
+  // (WaypointNavigator 클래스에 취소 메서드를 추가해야 함)
+
+  navigation_active_ = false;
+}
+
+bool RobotNavigation::loadParcelLocations() {
+  try {
+    std::string config_path = ament_index_cpp::get_package_share_directory("robot_master") + "/config/parcel_locations.yaml";
+
+    YAML::Node config = YAML::LoadFile(config_path);
+
+    if (!config["parcels"] || !config["parcels"].IsSequence()) {
+      return false;
     }
 
-    return;
-  }
+    parcel_locations_.clear();
 
-  RCLCPP_INFO(this->get_logger(), "Goal accepted by the action server");
-}
+    for (const auto& parcel_node : config["parcels"]) {
+      int id = parcel_node["id"].as<int>();
+      double x = parcel_node["x"].as<double>();
+      double y = parcel_node["y"].as<double>();
 
-void NavigationNode::feedbackCallback(const NavigateGoalHandle::SharedPtr& /*goal_handle*/, const std::shared_ptr<const NavigateAction::Feedback> feedback) {
-  // 수정된 부분: goal_handle->get_goal() 호출 제거
-  // 대신 피드백 데이터만 사용
+      parcel_locations_[id] = std::make_pair(x, y);
+    }
 
-  // feedback에 있는 데이터 직접 사용
-  double distance_remaining = feedback->distance_remaining;
+    return true;
+  } catch (const std::exception& e) {
+    // 파일이 없거나 로드 오류 발생 시 기본값 설정
+    // 기본 파셀 위치 설정 (샘플)
+    parcel_locations_[1] = std::make_pair(0.5, 0.5);
+    parcel_locations_[2] = std::make_pair(0.8, 0.5);
+    parcel_locations_[3] = std::make_pair(0.8, -0.5);
+    parcel_locations_[4] = std::make_pair(0.5, -0.5);
 
-  RCLCPP_INFO(this->get_logger(), "Distance to goal: %.2f meters", distance_remaining);
-}
-
-void NavigationNode::resultCallback(const NavigateGoalHandle::WrappedResult& result) {
-  std::string message;
-  bool success = false;
-
-  switch (result.code) {
-    case rclcpp_action::ResultCode::SUCCEEDED:
-      message = "Navigation succeeded";
-      success = true;
-      RCLCPP_INFO(this->get_logger(), "Navigation succeeded");
-      break;
-    case rclcpp_action::ResultCode::ABORTED:
-      message = "Navigation aborted";
-      RCLCPP_ERROR(this->get_logger(), "Navigation aborted");
-      break;
-    case rclcpp_action::ResultCode::CANCELED:
-      message = "Navigation canceled";
-      RCLCPP_ERROR(this->get_logger(), "Navigation canceled");
-      break;
-    default:
-      message = "Unknown result code";
-      RCLCPP_ERROR(this->get_logger(), "Unknown result code");
-      break;
-  }
-
-  // Call the stored callback
-  std::lock_guard<std::mutex> lock(callback_mutex_);
-  if (current_callback_) {
-    current_callback_(success, message);
-    current_callback_ = nullptr;
+    return true;
   }
 }
 
-}  // namespace turtlebot_navigation
-
-// Main function
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<turtlebot_navigation::NavigationNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace robot_navigation

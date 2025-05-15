@@ -1,61 +1,52 @@
+// Modified version of robot_navigation.hpp to integrate with waypoint_navigator
+
 /**
- * @file /include/turtlebot_navigation/navigation_node.hpp
+ * @file /include/robot_navigation/robot_navigation.hpp
  *
- * @brief Header for the navigation node.
+ * @brief Header for the robot navigation node.
  *
  * @date May 2025
  **/
 
-#ifndef TURTLEBOT_NAVIGATION_NODE_HPP
-#define TURTLEBOT_NAVIGATION_NODE_HPP
+#ifndef ROBOT_NAVIGATION_ROBOT_NAVIGATION_HPP
+#define ROBOT_NAVIGATION_ROBOT_NAVIGATION_HPP
 
-#include <chrono>
-#include <functional>
 #include <memory>
 #include <string>
-#include <thread>
 
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp_action/rclcpp_action.hpp"
 #include "robot_msgs/srv/navigate_to_parcel.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "robot_navigation/waypoint_navigator.hpp"
 
-namespace turtlebot_navigation {
+namespace robot_navigation {
 
-class NavigationNode : public rclcpp::Node {
+class RobotNavigation {
  public:
-  NavigationNode();
+  RobotNavigation();
+  virtual ~RobotNavigation() = default;
+
+  // 현재 파셀 위치로 네비게이션
+  bool navigateToParcel(int parcel_id);
+
+  // 네비게이션 상태 확인
+  bool isNavigating() const;
+
+  // 특정 좌표로 이동
+  bool navigateToCoordinate(double x, double y, double theta);
+
+  // 현재 작업 취소
+  void cancelNavigation();
 
  private:
-  // Service callbacks
-  void handleNavigationRequest(const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<robot_msgs::srv::NavigateToParcel::Request> request,
-                               std::shared_ptr<robot_msgs::srv::NavigateToParcel::Response> response);
+  // 웨이포인트 네비게이터 인스턴스
+  std::shared_ptr<WaypointNavigator> waypoint_navigator_;
 
-  // Action client for Nav2
-  using NavigateAction = nav2_msgs::action::NavigateToPose;
-  using NavigateGoalHandle = rclcpp_action::ClientGoalHandle<NavigateAction>;
-
-  rclcpp_action::Client<NavigateAction>::SharedPtr navigate_client_;
-
-  // Service server
-  rclcpp::Service<robot_msgs::srv::NavigateToParcel>::SharedPtr navigate_service_;
-
-  // Navigation functions
-  void sendNavigationGoal(double x, double y, double yaw, std::function<void(bool, const std::string&)> callback);
-
-  // Navigation action client callbacks
-  void goalResponseCallback(const NavigateGoalHandle::SharedPtr& goal_handle);
-  void feedbackCallback(const NavigateGoalHandle::SharedPtr& goal_handle, const std::shared_ptr<const NavigateAction::Feedback> feedback);
-  void resultCallback(const NavigateGoalHandle::WrappedResult& result);
-
-  // Callback tracking
-  std::mutex callback_mutex_;
-  std::function<void(bool, const std::string&)> current_callback_;
+  // 파셀 위치 관리
+  bool loadParcelLocations();
+  std::map<int, std::pair<double, double>> parcel_locations_;
+  bool navigation_active_;
 };
 
-}  // namespace turtlebot_navigation
+}  // namespace robot_navigation
 
-#endif  // TURTLEBOT_NAVIGATION_NODE_HPP
+#endif  // ROBOT_NAVIGATION_ROBOT_NAVIGATION_HPP

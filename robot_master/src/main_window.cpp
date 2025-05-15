@@ -44,6 +44,13 @@ void MainWindow::closeEvent(QCloseEvent* event) { QMainWindow::closeEvent(event)
 
 MainWindow::~MainWindow() { delete ui; }
 
+/*
+ * UI 업데이트
+ * 모터 상태, 리프트 높이, 작업 상태를 업데이트
+ * 모터 상태는 linear.x와 angular.z로 표시
+ * 리프트 높이는 0.4m 이상일 때 녹색, 0.2m 이상일 때 노란색으로 표시
+ */
+
 void MainWindow::updateData() {
   // 모터 상태 업데이트
   ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
@@ -68,6 +75,12 @@ void MainWindow::updateData() {
   }
 }
 
+/*
+ * 로그 메시지 추가
+ * 로그 메시지를 UI의 텍스트 편집기에 추가
+ * 현재 시간과 함께 메시지를 표시
+ */
+
 void MainWindow::appendLog(const QString& message) {
   QString current_time = QTime::currentTime().toString("hh:mm:ss");
   QString log_entry = QString("[%1] %2").arg(current_time).arg(message);
@@ -77,6 +90,14 @@ void MainWindow::appendLog(const QString& message) {
   // 스크롤을 항상 아래로 유지
   ui->textEdit_debugLog->verticalScrollBar()->setValue(ui->textEdit_debugLog->verticalScrollBar()->maximum());
 }
+
+/*
+ * 상태 업데이트
+ * 상태에 따라 UI를 업데이트
+ * 상태는 TaskState enum을 사용하여 정의
+ * IDLE, SEARCHING, NAVIGATING_TO_PARCEL, RECOGNIZING_PARCEL,
+ * LIFTING_PARCEL, DELIVERING, DROPPING_PARCEL, COMPLETED, ERROR
+ */
 
 void MainWindow::updateTaskState(int state) {
   TaskState task_state = static_cast<TaskState>(state);
@@ -121,6 +142,11 @@ void MainWindow::updateTaskState(int state) {
       break;
   }
 }
+
+/*
+ * 로봇 조종 핸들러
+ * 방향 버튼을 누르면 로봇이 해당 방향으로 이동
+ */
 
 // 방향 버튼 핸들러 구현
 void MainWindow::on_forwardButton_pressed() {
@@ -215,8 +241,11 @@ void MainWindow::on_emergencyStopButton_clicked() {
   appendLog("비상 정지 명령 실행");
 }
 
-// on_liftUpButton_clicked와 on_liftDownButton_clicked 함수는 제거하고
-// pressed/released 함수만 사용합니다.
+/*
+ * 리프트 버튼 핸들러
+ * 리프트 버튼을 누르면 리프트가 올라가고, 떼면 멈춤
+ * 리프트 버튼을 누르면 리프트가 내려가고, 떼면 멈춤
+ */
 
 void MainWindow::on_liftUpButton_pressed() {
   if (qnode->task_manager_) {
@@ -265,6 +294,12 @@ void MainWindow::on_liftDownButton_released() {
     }
   }
 }
+
+/*
+ * 물품 검색 버튼 핸들러
+ * 물품 검색 버튼을 누르면 물품 검색 작업 시작
+ * 물품 정보는 lineEdit_parcelInfo에서 가져옴
+ */
 
 void MainWindow::on_pushButton_findParcel_clicked() {
   QString parcelInfo = ui->lineEdit_parcelInfo->text();
