@@ -92,7 +92,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     
 2. 새 터미널 열어서 ros domain 12로 맞추기<br>
 
-3. Master & Vision<br>
+3. Master & Vision & navigation <br>
     ```bash
     # Master
     ros2 run robot_master robot_master
