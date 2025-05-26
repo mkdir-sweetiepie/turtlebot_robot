@@ -1,3 +1,3 @@
-bool qr_detected
-string qr_data
+bool ocr_detected
+string ocr_data
 int32 fps

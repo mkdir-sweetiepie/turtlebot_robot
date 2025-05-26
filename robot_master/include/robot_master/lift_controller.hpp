@@ -33,7 +33,7 @@ class LiftController {
  private:
   // 상수
   static constexpr double LIFT_SPEED = 0.3;  // m/s
-  static constexpr double MAX_HEIGHT = 0.5;  // 최대 높이 (미터)
+  static constexpr double MAX_HEIGHT = 0.7;  // 최대 높이 (미터)
   static constexpr double MIN_HEIGHT = 0.0;  // 최소 높이 (미터)
 
   // 노드 포인터
@@ -41,9 +41,6 @@ class LiftController {
 
   // 리프트 명령 퍼블리셔
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr lift_cmd_pub_;
-
-  // 리프트 높이 구독자
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr lift_height_sub_;
 
   // 현재 높이 및 명령 상태
   double current_height_ = 0.0;

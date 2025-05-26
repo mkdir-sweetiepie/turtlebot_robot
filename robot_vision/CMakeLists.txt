@@ -67,4 +67,30 @@ install(TARGETS ${PROJECT_NAME}
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# scripts 디렉토리의 Python 스크립트 설치
+install(PROGRAMS
+  scripts/ocr_inference_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# launch 파일 설치
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# 모델 파일 설치 (올바른 경로로)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models/final_model.pth)
+    install(FILES
+        models/final_model.pth
+        DESTINATION share/${PROJECT_NAME}/models
+    )
+    message(STATUS "final_model.pth found at models/ and will be installed")
+else()
+    message(STATUS "final_model.pth not found at models/, skipping installation")
+endif()
+
+# 전체 모델 디렉토리 설치
+install(DIRECTORY models/
+    DESTINATION share/${PROJECT_NAME}/models/
+)
 ament_package()

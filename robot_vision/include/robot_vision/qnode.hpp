@@ -1,75 +1,61 @@
-/**
- * @file /include/robot_vision/qnode.hpp
- *
- * @brief Communications central!
- *
- * @date January 2025
- **/
-/*****************************************************************************
-** Ifdefs
-*****************************************************************************/
+#ifndef ROBOT_VISION_QNODE_HPP_
+#define ROBOT_VISION_QNODE_HPP_
 
-#ifndef robot_vision_QNODE_HPP_
-#define robot_vision_QNODE_HPP_
-
-/*****************************************************************************
-** Includes
-*****************************************************************************/
-#ifndef Q_MOC_RUN
-#include <rclcpp/rclcpp.hpp>
-#endif
+#include <QObject>
+#include <QString>
 #include <QThread>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-
-#include <mutex>
+#include <chrono>
 #include <opencv2/opencv.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <robot_msgs/msg/vision_msg.hpp>
+#include <sensor_msgs/msg/image.hpp>
 
-#include "robot_msgs/msg/master_msg.hpp"
-#include "robot_msgs/msg/vision_msg.hpp"
-#include "sensor_msgs/msg/image.hpp"
-#include "vision.hpp"
-#include <QImage>
-/*****************************************************************************
-** Class
-*****************************************************************************/
 namespace robot_vision {
 
 class QNode : public QThread {
   Q_OBJECT
+
  public:
   QNode();
-  ~QNode();
+  virtual ~QNode();
 
-  Vision robot_vision_;
+  void run() override;
+  void enableDetection(bool enabled);
 
-  cv::Mat* imgRaw = NULL;   // 원본 이미지 저장
-  bool isreceived = false;  // 이미지 수신 여부
-
- protected:
-  void run();
-
- private:
-  std::shared_ptr<rclcpp::Node> node;
-
-  void initPubSub();
-
-  // topic
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pubImage;
-  rclcpp::Publisher<robot_msgs::msg::VisionMsg>::SharedPtr vision_pub;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub;
-
-  void callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img);
+  cv::Mat* imgRaw = nullptr;
+  bool isreceived = false;
+  robot_msgs::msg::VisionMsg latest_ocr_result_;
 
  Q_SIGNALS:
   void rosShutDown();
   void sigRcvImg();
+  void sigOCRResult(const QString& text, bool detected, float confidence, int ocr_processing_time);
+  void sigCameraFPS(int fps);
+
+ private:
+  void initPubSub();
+  void callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img);
+  void requestOCRInference();
+  void ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg);
+
+  std::shared_ptr<rclcpp::Node> node;
+  rclcpp::Publisher<robot_msgs::msg::VisionMsg>::SharedPtr vision_pub;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr ocr_request_pub;
+  rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr ocr_result_sub;
+  rclcpp::TimerBase::SharedPtr ocr_timer;
+
+  bool ocr_processing_;
+  bool detection_enabled_;
+  sensor_msgs::msg::Image::SharedPtr latest_image_msg;
+
+  int camera_fps_count_;
+  int current_camera_fps_;
+  std::chrono::steady_clock::time_point last_camera_time_;
 };
 
 }  // namespace robot_vision
 
-#endif /* robot_vision_QNODE_HPP_ */
+Q_DECLARE_METATYPE(QString);
+
+#endif  // ROBOT_VISION_QNODE_HPP_

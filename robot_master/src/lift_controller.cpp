@@ -14,9 +14,6 @@ LiftController::LiftController(std::shared_ptr<rclcpp::Node> node) : node_(node)
   // 리프트 명령 퍼블리셔 초기화
   lift_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_lift_vel", 10);
 
-  // 리프트 높이 구독자 초기화 (실제 로봇에서 사용)
-  lift_height_sub_ = node_->create_subscription<std_msgs::msg::Float32>("lift_height", 10, std::bind(&LiftController::heightCallback, this, std::placeholders::_1));
-
   // 시뮬레이션용 타이머 (실제 하드웨어가 없는 경우)
   sim_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50), std::bind(&LiftController::updateSimulation, this));
 
