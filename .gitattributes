@@ -1,0 +1,2 @@
+*.pth filter=lfs diff=lfs merge=lfs -text
+robot_vision/models/* filter=lfs diff=lfs merge=lfs -text
