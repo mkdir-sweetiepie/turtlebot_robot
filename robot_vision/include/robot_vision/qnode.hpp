@@ -20,23 +20,23 @@ class QNode : public QThread {
   virtual ~QNode();
 
   void run() override;
-  void enableDetection(bool enabled);
+  void enableDetection(bool enabled);  // OCR 탐지 활성화 함수
 
-  cv::Mat* imgRaw = nullptr;
-  bool isreceived = false;
-  robot_msgs::msg::VisionMsg latest_ocr_result_;
+  cv::Mat* imgRaw = nullptr;                      // 원본 이미지 포인터
+  bool isreceived = false;                        // 이미지 수신 여부
+  robot_msgs::msg::VisionMsg latest_ocr_result_;  // 최신 OCR 결과 메시지
 
  Q_SIGNALS:
   void rosShutDown();
-  void sigRcvImg();
-  void sigOCRResult(const QString& text, bool detected, float confidence, int ocr_processing_time);
-  void sigCameraFPS(int fps);
+  void sigRcvImg();                                                                                  // 이미지 수신 시그널
+  void sigOCRResult(const QString& text, bool detected, float confidence, int ocr_processing_time);  // OCR 결과 시그널
+  void sigCameraFPS(int fps);                                                                        // 카메라 FPS 시그널
 
  private:
   void initPubSub();
-  void callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img);
-  void requestOCRInference();
-  void ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg);
+  void callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img);     // usb_cam 카메라 이미지 콜백 함수
+  void requestOCRInference();                                               // OCR 추론 요청 함수 (5초마다 호출)
+  void ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg);  // OCR 결과 콜백 함수
 
   std::shared_ptr<rclcpp::Node> node;
   rclcpp::Publisher<robot_msgs::msg::VisionMsg>::SharedPtr vision_pub;
@@ -45,13 +45,13 @@ class QNode : public QThread {
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr ocr_result_sub;
   rclcpp::TimerBase::SharedPtr ocr_timer;
 
-  bool ocr_processing_;
-  bool detection_enabled_;
-  sensor_msgs::msg::Image::SharedPtr latest_image_msg;
+  bool ocr_processing_;                                 // OCR 처리 중인지 여부
+  bool detection_enabled_;                              // OCR 탐지 활성화 여부
+  sensor_msgs::msg::Image::SharedPtr latest_image_msg;  // 최신 이미지 메시지
 
-  int camera_fps_count_;
-  int current_camera_fps_;
-  std::chrono::steady_clock::time_point last_camera_time_;
+  int camera_fps_count_;                                    // 카메라 FPS 계산을 위한 카운트
+  int current_camera_fps_;                                  // 현재 카메라 FPS
+  std::chrono::steady_clock::time_point last_camera_time_;  // 마지막 카메라 시간
 };
 
 }  // namespace robot_vision

@@ -1,6 +1,3 @@
-// =============================================================================
-// main_window.hpp
-// =============================================================================
 #ifndef robot_master_MAIN_WINDOW_H
 #define robot_master_MAIN_WINDOW_H
 
@@ -19,11 +16,12 @@ class MainWindow : public QMainWindow {
   ~MainWindow();
 
  private Q_SLOTS:
+  // 데이터 업데이트
   void updateData();
   void appendLog(const QString& message);
   void updateWorkState(int state);
 
-  // 로봇 조종 버튼들
+  // 로봇 조종 버튼
   void on_forwardButton_pressed();
   void on_backwardButton_pressed();
   void on_leftButton_pressed();
@@ -31,7 +29,7 @@ class MainWindow : public QMainWindow {
   void on_stopButton_clicked();
   void on_emergencyStopButton_clicked();
 
-  // 리프트 버튼들
+  // 리프트 버튼
   void on_liftUpButton_pressed();
   void on_liftDownButton_pressed();
   void on_liftUpButton_released();
@@ -46,12 +44,12 @@ class MainWindow : public QMainWindow {
  private:
   Ui::MainWindowDesign* ui;
   QNode* qnode;
-  QTimer* lift_timer;
-  double current_lift_height;
-  bool lift_moving_up;
-  bool lift_moving_down;
+  QTimer* lift_timer;          // 리프트 높이 업데이트용 타이머
+  double current_lift_height;  // 현재 리프트 높이
+  bool lift_moving_up;         // 리프트가 올라가는 중인지 여부
+  bool lift_moving_down;       // 리프트가 내려가는 중인지 여부
 
-  void updateLiftHeight();
+  void updateLiftHeight();  // 리프트 높이 업데이트
 };
 
 }  // namespace robot_master

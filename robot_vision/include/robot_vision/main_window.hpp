@@ -20,20 +20,20 @@ class MainWindow : public QMainWindow {
   ~MainWindow();
 
   QNode* qnode;
-  cv::Mat clone_mat;
+  cv::Mat clone_mat;  // 이미지 클론을 위한 cv::Mat 객체
 
  private:
   Ui::MainWindowDesign* ui;
-  bool detection_active_;
+  bool detection_active_;  // OCR 탐지 활성화 여부
 
   void closeEvent(QCloseEvent* event);
 
  public Q_SLOTS:
-  void slotUpdateImg();
-  void slotUpdateOCRResult(const QString& text, bool detected, float confidence, int processing_time);
-  void slotUpdateCameraFPS(int fps);
-  void onStartDetection();
-  void onStopDetection();
+  void slotUpdateImg();                                                                                 // 이미지 업데이트
+  void slotUpdateOCRResult(const QString& text, bool detected, float confidence, int processing_time);  // OCR 결과 업데이트
+  void slotUpdateCameraFPS(int fps);                                                                    // 카메라 FPS 업데이트
+  void onStartDetection();                                                                              // OCR 탐지 시작
+  void onStopDetection();                                                                               // OCR 탐지 중지
 };
 
 }  // namespace robot_vision

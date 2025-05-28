@@ -15,7 +15,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
   this->setWindowIcon(icon);
 
   qnode = new QNode();
-  move(820, 330);
+  move(0, 800);
 
   QObject::connect(qnode, &QNode::rosShutDown, this, &MainWindow::close);
   QObject::connect(qnode, &QNode::sigRcvImg, this, &MainWindow::slotUpdateImg);
@@ -34,6 +34,7 @@ void MainWindow::closeEvent(QCloseEvent* event) { QMainWindow::closeEvent(event)
 
 MainWindow::~MainWindow() { delete ui; }
 
+// 이미지 업데이트
 void MainWindow::slotUpdateImg() {
   clone_mat = qnode->imgRaw->clone();
   cv::resize(clone_mat, clone_mat, cv::Size(760, 360), 0, 0, cv::INTER_CUBIC);
@@ -46,8 +47,10 @@ void MainWindow::slotUpdateImg() {
   qnode->isreceived = false;
 }
 
+// FPS 업데이트
 void MainWindow::slotUpdateCameraFPS(int fps) { ui->fps_label->setText(QString::number(fps)); }
 
+// OCR 결과 업데이트
 void MainWindow::slotUpdateOCRResult(const QString& text, bool detected, float confidence, int processing_time) {
   if (detected) {
     QString result_text;
@@ -69,6 +72,7 @@ void MainWindow::slotUpdateOCRResult(const QString& text, bool detected, float c
   }
 }
 
+// OCR 인식 시작
 void MainWindow::onStartDetection() {
   detection_active_ = true;
   qnode->enableDetection(true);
@@ -81,6 +85,7 @@ void MainWindow::onStartDetection() {
   statusBar()->showMessage("OCR 물품 인식이 시작되었습니다 (5초 간격으로 처리)", 3000);
 }
 
+// OCR 인식 중지
 void MainWindow::onStopDetection() {
   detection_active_ = false;
   qnode->enableDetection(false);

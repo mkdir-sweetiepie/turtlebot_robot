@@ -1,6 +1,3 @@
-// =============================================================================
-// src/main_window.cpp (수정된 리프트 버튼 핸들러)
-// =============================================================================
 #include "../include/robot_master/main_window.hpp"
 
 #include <QCloseEvent>
@@ -24,7 +21,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
   connect(lift_timer, &QTimer::timeout, this, &MainWindow::updateLiftHeight);
   lift_timer->start(50);  // 50ms마다 업데이트
 
-  move(820, 0);
+  move(0, 0);
 
   // 시그널 연결
   QObject::connect(qnode, SIGNAL(rosShutDown()), this, SLOT(close()));
@@ -39,6 +36,7 @@ MainWindow::~MainWindow() { delete ui; }
 
 void MainWindow::closeEvent(QCloseEvent* event) { QMainWindow::closeEvent(event); }
 
+
 void MainWindow::updateData() {
   // 모터 상태 업데이트
   ui->label_linear_x->setText(QString::number(qnode->driving_.motor_value_.linear.x));
@@ -49,21 +47,21 @@ void MainWindow::updateData() {
   ui->liftHeightValue->setText(QString::number(current_lift_height, 'f', 2));
 
   // 리프트 높이에 따른 색상 변경
-  if (current_lift_height > 0.4) {
+  if (current_lift_height > 0.5) {
     ui->liftHeightValue->setStyleSheet("color: #a3be8c;");  // 녹색
-  } else if (current_lift_height > 0.2) {
+  } else if (current_lift_height > 0.3) {
     ui->liftHeightValue->setStyleSheet("color: #ebcb8b;");  // 노랑
   } else {
     ui->liftHeightValue->setStyleSheet("color: #d8dee9;");  // 기본
   }
 }
 
+// 리프트 높이 업데이트
 void MainWindow::updateLiftHeight() {
-  // 이제 실제 리프트 높이는 QNode에서 관리하므로
-  // 여기서는 UI 업데이트만 수행
   current_lift_height = qnode->getLiftHeight();
 }
 
+// 로그 메시지 추가
 void MainWindow::appendLog(const QString& message) {
   QString current_time = QTime::currentTime().toString("hh:mm:ss");
   QString log_entry = QString("[%1] %2").arg(current_time).arg(message);
@@ -72,6 +70,7 @@ void MainWindow::appendLog(const QString& message) {
   ui->textEdit_debugLog->verticalScrollBar()->setValue(ui->textEdit_debugLog->verticalScrollBar()->maximum());
 }
 
+// 작업 상태 업데이트
 void MainWindow::updateWorkState(int state) {
   QNode::WorkState work_state = static_cast<QNode::WorkState>(state);
 
@@ -86,12 +85,12 @@ void MainWindow::updateWorkState(int state) {
       break;
     case QNode::WorkState::COMPLETED:
       ui->statusValueLabel->setText("작업 완료");
-      ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
+      ui->statusValueLabel->setStyleSheet("color:rgb(79, 85, 161);");
       break;
   }
 }
 
-// 로봇 조종 버튼 핸들러들
+// -------------로봇 조종 버튼-------------
 void MainWindow::on_forwardButton_pressed() {
   RobotDriving::start = true;
   qnode->driving_.setSpeed(0.1, 0.0);
@@ -135,36 +134,38 @@ void MainWindow::on_stopButton_clicked() {
 void MainWindow::on_emergencyStopButton_clicked() {
   RobotDriving::start = false;
   qnode->driving_.setSpeed(0.0, 0.0);
+  qnode->cancelTask();
   ui->statusValueLabel->setText("비상 정지");
   ui->statusValueLabel->setStyleSheet("color: #bf616a;");
-
-  // 모든 작업 취소 (리프트 포함)
-  qnode->cancelTask();
-
   appendLog("비상 정지 명령 실행");
 }
 
-// 🔧 수정된 리프트 버튼 핸들러들 (실제 ROS 메시지 발행)
+// -------------리프트 버튼-------------
 void MainWindow::on_liftUpButton_pressed() {
-  qnode->liftUp();  // 실제 LiftController 호출
+  qnode->liftUp();
+  ui->statusValueLabel->setText("리프트 올림");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
   appendLog("리프트 올림 명령 전송");
 }
 
 void MainWindow::on_liftDownButton_pressed() {
-  qnode->liftDown();  // 실제 LiftController 호출
+  qnode->liftDown();
+  ui->statusValueLabel->setText("리프트 내림");
+  ui->statusValueLabel->setStyleSheet("color: #a3be8c;");
   appendLog("리프트 내림 명령 전송");
 }
 
 void MainWindow::on_liftUpButton_released() {
-  qnode->liftStop();  // 실제 LiftController 정지
+  qnode->liftStop();
   appendLog("리프트 정지 명령 전송");
 }
 
 void MainWindow::on_liftDownButton_released() {
-  qnode->liftStop();  // 실제 LiftController 정지
+  qnode->liftStop();
   appendLog("리프트 정지 명령 전송");
 }
 
+// -------------물품 검색-------------
 void MainWindow::on_pushButton_findParcel_clicked() {
   QString parcelInfo = ui->lineEdit_parcelInfo->text();
 

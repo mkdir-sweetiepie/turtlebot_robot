@@ -7,14 +7,12 @@ import os
 def generate_launch_description():
     return LaunchDescription(
         [
-            # C++ GUI 노드
             Node(
                 package="robot_vision",
                 executable="robot_vision",
                 name="robot_vision_gui",
                 output="screen",
             ),
-            # Python OCR 추론 노드
             Node(
                 package="robot_vision",
                 executable="ocr_inference_node.py",
@@ -25,6 +23,6 @@ def generate_launch_description():
                     {"score_threshold": 0.7},
                     {"nms_threshold": 0.3},
                 ],
-            )
+            ),
         ]
     )

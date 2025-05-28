@@ -61,7 +61,7 @@ class OCRInferenceNode(Node):
         super().__init__("ocr_inference_node")
 
         self.image_subscription = self.create_subscription(
-            Image, "/camera/ocr_request", self.image_callback, 10
+            Image, "/ocr_request", self.image_callback, 10
         )
         self.vision_publisher = self.create_publisher(VisionMsg, "turtle_vision", 10)
 

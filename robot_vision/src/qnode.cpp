@@ -4,7 +4,7 @@
 
 namespace robot_vision {
 
-QNode::QNode() : ocr_processing_(false), detection_enabled_(false), camera_fps_count_(0), current_camera_fps_(0) {
+QNode::QNode() : ocr_processing_(false), detection_enabled_(false), camera_fps_count_(0), current_camera_fps_(0), isreceived(false) {
   int argc = 0;
   char** argv = nullptr;
   rclcpp::init(argc, argv);
@@ -33,47 +33,54 @@ void QNode::run() {
 }
 
 void QNode::initPubSub() {
+  // ocr output pub
   vision_pub = node->create_publisher<robot_msgs::msg::VisionMsg>("turtle_vision", 100);
-
+  // ocr request pub
+  ocr_request_pub = node->create_publisher<sensor_msgs::msg::Image>("/ocr_request", 10);
+  // usb_cam sub
   image_sub = node->create_subscription<sensor_msgs::msg::Image>("camera1/image_raw", 10, std::bind(&QNode::callbackImage, this, std::placeholders::_1));
-
-  ocr_request_pub = node->create_publisher<sensor_msgs::msg::Image>("/camera/ocr_request", 10);
-
+  // ocr result sub
   ocr_result_sub = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 10, std::bind(&QNode::ocrResultCallback, this, std::placeholders::_1));
-
+  // 5초마다 ocr 추론 요청 타이머 설정
   ocr_timer = node->create_wall_timer(std::chrono::milliseconds(5000), std::bind(&QNode::requestOCRInference, this));
 }
 
+// usb_cam 카메라 이미지 콜백 함수
 void QNode::callbackImage(const sensor_msgs::msg::Image::SharedPtr msg_img) {
-  // FPS 카운터는 항상 증가
-  auto current_time = std::chrono::steady_clock::now();
-  camera_fps_count_++;
+  if (!isreceived) {
+    isreceived = true;
 
-  // 1초마다 FPS 계산
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_camera_time_);
-  if (duration.count() >= 1000) {
-    current_camera_fps_ = (camera_fps_count_ * 1000) / duration.count();
-    camera_fps_count_ = 0;
-    last_camera_time_ = current_time;
-    Q_EMIT sigCameraFPS(current_camera_fps_);
-  }
+    // 카메라 FPS 계산
+    auto current_time = std::chrono::steady_clock::now();
+    camera_fps_count_++;
 
-  // 이미지 처리는 별도로 (isreceived 조건 제거)
-  try {
-    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg_img, sensor_msgs::image_encodings::RGB8);
-
-    if (imgRaw != nullptr) {
-      delete imgRaw;  // 이전 이미지 메모리 해제
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_camera_time_);
+    if (duration.count() >= 1000) {
+      current_camera_fps_ = (camera_fps_count_ * 1000) / duration.count();
+      camera_fps_count_ = 0;
+      last_camera_time_ = current_time;
+      Q_EMIT sigCameraFPS(current_camera_fps_);
     }
 
-    imgRaw = new cv::Mat(cv_ptr->image);
-    latest_image_msg = msg_img;
-    Q_EMIT sigRcvImg();
+    // 이미지 처리
+    try {
+      cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg_img, sensor_msgs::image_encodings::RGB8);
 
-  } catch (cv_bridge::Exception& e) {
-    RCLCPP_ERROR(node->get_logger(), "cv_bridge exception: %s", e.what());
+      if (imgRaw != nullptr) {
+        delete imgRaw;
+      }
+
+      imgRaw = new cv::Mat(cv_ptr->image);
+      latest_image_msg = msg_img;
+      Q_EMIT sigRcvImg();
+
+    } catch (cv_bridge::Exception& e) {
+      RCLCPP_ERROR(node->get_logger(), "cv_bridge exception: %s", e.what());
+    }
   }
 }
+
+// OCR 추론 요청 함수 (5초마다 호출)
 void QNode::requestOCRInference() {
   if (detection_enabled_ && !ocr_processing_ && latest_image_msg) {
     ocr_processing_ = true;
@@ -82,6 +89,7 @@ void QNode::requestOCRInference() {
   }
 }
 
+// OCR 결과 콜백 함수
 void QNode::ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg) {
   ocr_processing_ = false;
   latest_ocr_result_ = *msg;
@@ -107,12 +115,9 @@ void QNode::ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg) {
   }
 
   Q_EMIT sigOCRResult(QString::fromStdString(display_text), msg->ocr_detected, confidence, msg->fps);
-
-  if (msg->ocr_detected) {
-    RCLCPP_INFO(node->get_logger(), "물품 인식: %s (확률: %.0f%%)", display_text.c_str(), confidence * 100);
-  }
 }
 
+// OCR 탐지 활성화/비활성화 함수
 void QNode::enableDetection(bool enabled) {
   detection_enabled_ = enabled;
   if (enabled) {

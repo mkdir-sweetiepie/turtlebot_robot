@@ -1,6 +1,3 @@
-// =============================================================================
-// include/robot_master/qnode.hpp (LiftController 통합)
-// =============================================================================
 #ifndef robot_master_QNODE_HPP_
 #define robot_master_QNODE_HPP_
 
@@ -10,7 +7,7 @@
 #include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
-#include "lift_controller.hpp"  // LiftController 추가
+#include "lift_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "robot_driving.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
@@ -23,29 +20,29 @@ class QNode : public QThread {
   Q_OBJECT
 
  public:
+  // 작업 상태 정의
   enum class WorkState { IDLE, WORKING, COMPLETED };
 
   QNode();
   ~QNode();
 
-  void startFindParcelTask(const std::string& item);
-  void cancelTask();
+  void startFindParcelTask(const std::string& item);  // 아이템 찾기 작업 시작
+  void cancelTask();                                  // 작업 취소
 
+  // 리프트 제어
   void liftUp();
   void liftDown();
   void liftStop();
   double getLiftHeight();
 
-  RobotDriving driving_;
-  WorkState getCurrentState() const { return current_work_state_; }
-
- public Q_SLOTS:
+  RobotDriving driving_;                                             // 로봇 주행 제어
+  WorkState getCurrentState() const { return current_work_state_; }  // 현재 작업 상태 조회
 
  Q_SIGNALS:
   void rosShutDown();
-  void dataReceived();
-  void logMessage(const QString& message);
-  void workStateChanged(int state);
+  void dataReceived();                      // 데이터 수신 시그널
+  void logMessage(const QString& message);  // 로그 메시지 시그널
+  void workStateChanged(int state);         // 작업 상태 변경 시그널
 
  protected:
   void run();
@@ -53,32 +50,28 @@ class QNode : public QThread {
  private:
   std::shared_ptr<rclcpp::Node> node;
 
-  // Publishers
+  // Sub Pub Service Client
   rclcpp::Publisher<robot_msgs::msg::MasterMsg>::SharedPtr pub_master;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
-
-  // Subscribers
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
-
-  // Service clients
   rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedPtr nav_client_;
-
-  // LiftController
   std::shared_ptr<LiftController> lift_controller_;
 
   // 작업 상태 관리
-  WorkState current_work_state_;
-  std::string target_item_;
-  QTimer* work_timeout_timer_;
+  WorkState current_work_state_;                               // 현재 작업 상태
+  std::string target_item_;                                    // 찾고자 하는 아이템 이름
+  size_t current_location_index_{0};                           // 현재 위치 인덱스
+  std::vector<std::tuple<double, double, double>> locations_;  // 위치 목록 (x, y, yaw)
+  bool at_location_{false};                                    // 위치 도착 여부 플래그
 
-  void initPubSub();
-  void turtleRun();
-  void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
-  void navigateToPosition(double x, double y, double yaw);
-  void setState(WorkState new_state);
-
- private Q_SLOTS:
-  void onWorkTimeout();
+  void initPubSub();                                                                  // 퍼블리셔, 서브스크라이버, 서비스 초기화
+  void turtleRun();                                                                   // 로봇 주행 제어 루프
+  void loadLocations();                                                               // 위치 목록 로드
+  void navigateToNextLocation();                                                      // 다음 위치로 이동
+  void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);  // 비전 메시지 콜백
+  void setState(WorkState new_state);                                                 // 작업 상태 변경
+  void performItemFoundActions();                                                     // 물품 발견 시 동작 수행
+  void navigateToHome();                                                              // 홈으로 복귀
 };
 
 }  // namespace robot_master
