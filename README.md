@@ -73,7 +73,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     source ~/turtlebot3_ws/install/setup.bash
     ```
 
-5. **Install RPN best.pt**
+5. **Install RPN final_model.pth**
    <br> Google Drive(https://drive.google.com/drive/folders/1EiXxVB3fff_02BRlWfy7Ie57Vk5ZDHDy)
    
 ## Execution[Remote PC]
