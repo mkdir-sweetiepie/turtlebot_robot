@@ -121,10 +121,17 @@ void QNode::navigateToNextLocation() {
 void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg) {
   if (!vision_msg || !at_location_) return;  // 매개변수 이름 수정
   at_location_ = false;                      // 비전 데이터 처리 후 플래그 리셋
+  
   if (vision_msg->ocr_detected) {
-    QString ocr_msg = QString("OCR 코드 감지: %1").arg(QString::fromStdString(vision_msg->ocr_data));
-    Q_EMIT logMessage(ocr_msg);
-    if (vision_msg->ocr_data == target_item_) {
+    QString detected_text = QString::fromStdString(vision_msg->ocr_text);
+    float confidence = vision_msg->confidence;
+
+    Q_EMIT logMessage(QString("OCR 감지됨 - 텍스트: %1, 신뢰도: %2, FPS: %3ms")
+                      .arg(detected_text)
+                      .arg(confidence, 0, 'f', 2)
+                      .arg(vision_msg->fps));
+
+    if (detected_text == target_item_) {
       Q_EMIT logMessage("목표 물품을 찾았습니다! 리프트 동작 시작");
       performItemFoundActions();
     } else {
