@@ -96,7 +96,7 @@ void QNode::ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg) {
   vision_pub->publish(*msg);
 
   float confidence = 0.0f;
-  std::string display_text = msg->ocr_data;
+  std::string display_text = msg->ocr_text;
 
   if (msg->ocr_detected) {
     display_text = msg->ocr_text;

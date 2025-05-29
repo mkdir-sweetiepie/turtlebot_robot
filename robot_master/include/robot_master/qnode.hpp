@@ -58,11 +58,14 @@ class QNode : public QThread {
   std::shared_ptr<LiftController> lift_controller_;
 
   // 작업 상태 관리
-  WorkState current_work_state_;                               // 현재 작업 상태
-  std::string target_item_;                                    // 찾고자 하는 아이템 이름
-  size_t current_location_index_{0};                           // 현재 위치 인덱스
-  std::vector<std::tuple<double, double, double>> locations_;  // 위치 목록 (x, y, yaw)
-  bool at_location_{false};                                    // 위치 도착 여부 플래그
+  WorkState current_work_state_;
+  std::string target_item_;
+  size_t current_location_index_{0};
+  std::vector<std::tuple<double, double, double>> locations_;
+  bool at_location_{false};
+  bool via_waypoint_{false};                                         // 경유점 경유 여부
+  bool going_home_{false};                                           // 홈 복귀 중 여부
+  const std::tuple<double, double, double> WAYPOINT{3.0, 0.0, 0.0};  // 경유점
 
   void initPubSub();                                                                  // 퍼블리셔, 서브스크라이버, 서비스 초기화
   void turtleRun();                                                                   // 로봇 주행 제어 루프
@@ -71,7 +74,8 @@ class QNode : public QThread {
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);  // 비전 메시지 콜백
   void setState(WorkState new_state);                                                 // 작업 상태 변경
   void performItemFoundActions();                                                     // 물품 발견 시 동작 수행
-  void navigateToHome();                                                              // 홈으로 복귀
+  void navigateToHome();
+  void sendNavigationRequest(double x, double y, double yaw, std::function<void(bool)> cb);  // 홈으로 복귀
 };
 
 }  // namespace robot_master

@@ -257,13 +257,13 @@ class OCRInferenceNode(Node):
     def publish_results(self, results, processing_time_ms):
         vision_msg = VisionMsg()
         vision_msg.fps = processing_time_ms
-    
+
         if results:
             best_result = max(results, key=lambda x: x["confidence"])
             vision_msg.ocr_detected = True
-            vision_msg.ocr_text = best_result['text']
-            vision_msg.confidence = float(best_result['confidence'])
-    
+            vision_msg.ocr_text = best_result["text"]
+            vision_msg.confidence = float(best_result["confidence"])
+
             self.get_logger().info(
                 f"물품 인식 완료: {vision_msg.ocr_text} (신뢰도: {vision_msg.confidence:.2f}) "
                 f"처리시간: {processing_time_ms}ms"
@@ -272,11 +272,11 @@ class OCRInferenceNode(Node):
             vision_msg.ocr_detected = False
             vision_msg.ocr_text = ""
             vision_msg.confidence = 0.0
-    
+
             self.get_logger().info(f"물품 인식 실패 - 처리시간: {processing_time_ms}ms")
-    
+
         self.vision_publisher.publish(vision_msg)
-        
+
     def generate_anchors(self, feature_maps, sizes, ratios, strides):
         anchors = []
         for fm, size, stride in zip(feature_maps, sizes, strides):

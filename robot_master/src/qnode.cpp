@@ -8,13 +8,13 @@
 
 namespace robot_master {
 
-QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), current_location_index_(0), at_location_(false) {
+QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), current_location_index_(0), at_location_(false), via_waypoint_(false), going_home_(false) {
   int argc = 0;
   char** argv = nullptr;
   rclcpp::init(argc, argv);
   node = rclcpp::Node::make_shared("robot_master");
-  loadLocations();  // 위치 정보 로드
-  initPubSub();     // 퍼블리셔와 서브스크라이버 초기화
+  loadLocations();
+  initPubSub();
   lift_controller_ = std::make_shared<LiftController>(node);
   start();
 }
@@ -29,7 +29,7 @@ void QNode::run() {
   rclcpp::WallRate loop_rate(20);
   while (rclcpp::ok()) {
     rclcpp::spin_some(node);
-    turtleRun();  // 로봇 동작 실행
+    turtleRun();
     Q_EMIT dataReceived();
     loop_rate.sleep();
   }
@@ -37,7 +37,6 @@ void QNode::run() {
   Q_EMIT rosShutDown();
 }
 
-// 위치 정보 로드
 void QNode::loadLocations() {
   try {
     std::string config_path = ament_index_cpp::get_package_share_directory("robot_master") + "/config/parcel_locations.yaml";
@@ -58,7 +57,6 @@ void QNode::loadLocations() {
   }
 }
 
-// 퍼블리셔와 서브스크라이버 초기화
 void QNode::initPubSub() {
   pub_master = node->create_publisher<robot_msgs::msg::MasterMsg>("turtle_master", 100);
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
@@ -66,7 +64,6 @@ void QNode::initPubSub() {
   nav_client_ = node->create_client<robot_msgs::srv::NavigateToParcel>("navigate_to_parcel");
 }
 
-// 물품 찾기 작업 시작
 void QNode::startFindParcelTask(const std::string& item) {
   if (current_work_state_ != WorkState::IDLE) {
     Q_EMIT logMessage("다른 작업이 진행 중입니다. 현재 작업을 취소하고 다시 시도하세요.");
@@ -83,55 +80,96 @@ void QNode::startFindParcelTask(const std::string& item) {
   target_item_ = item;
   current_location_index_ = 0;
   setState(WorkState::WORKING);
+  via_waypoint_ = true;  // 첫 이동은 경유점부터
+  going_home_ = false;
   navigateToNextLocation();
 }
 
-// 다음 위치로 내비게이션
 void QNode::navigateToNextLocation() {
+  if (going_home_) {
+    if (via_waypoint_) {
+      sendNavigationRequest(std::get<0>(WAYPOINT), std::get<1>(WAYPOINT), std::get<2>(WAYPOINT), [this](bool success) {
+        if (success) {
+          via_waypoint_ = false;
+          navigateToNextLocation();  // 홈으로 실제 이동
+        } else {
+          setState(WorkState::IDLE);
+        }
+      });
+      return;
+    } else {
+      sendNavigationRequest(0.01, 0.0, 0.0, [this](bool success) {
+        if (success) {
+          Q_EMIT logMessage("홈으로 복귀 중");
+          liftStop();
+        } else {
+          Q_EMIT logMessage("홈으로의 내비게이션 시작 실패");
+        }
+        setState(WorkState::IDLE);
+      });
+      return;
+    }
+  }
+
+  if (current_location_index_ == 0 && via_waypoint_) {
+    sendNavigationRequest(std::get<0>(WAYPOINT), std::get<1>(WAYPOINT), std::get<2>(WAYPOINT), [this](bool success) {
+      if (success) {
+        via_waypoint_ = false;
+        navigateToNextLocation();  // 실제 첫 위치로 이동
+      } else {
+        setState(WorkState::IDLE);
+      }
+    });
+    return;
+  }
+
   if (current_location_index_ >= locations_.size()) {
     Q_EMIT logMessage(QString("Item %1을(를) 모든 위치에서 찾지 못했습니다").arg(QString::fromStdString(target_item_)));
     setState(WorkState::IDLE);
     target_item_ = "";
     return;
   }
-  if (!nav_client_->wait_for_service(std::chrono::seconds(2))) {
-    Q_EMIT logMessage("내비게이션 서비스를 사용할 수 없습니다");
-    setState(WorkState::IDLE);
-    return;
-  }
-  auto request = std::make_shared<robot_msgs::srv::NavigateToParcel::Request>();
-  request->x = std::get<0>(locations_[current_location_index_]);
-  request->y = std::get<1>(locations_[current_location_index_]);
-  request->yaw = std::get<2>(locations_[current_location_index_]);
-  nav_client_->async_send_request(request, [this](rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedFuture future) {
-    auto response = future.get();
-    QString msg = QString("위치 %1로 내비게이션 %2: %3").arg(current_location_index_ + 1).arg(response->success ? "시작됨" : "실패").arg(QString::fromStdString(response->message));
-    Q_EMIT logMessage(msg);
-    if (response->success) {
-      at_location_ = true;  // 위치에 도착했음을 표시
+
+  auto [x, y, yaw] = locations_[current_location_index_];
+  sendNavigationRequest(x, y, yaw, [this](bool success) {
+    if (success) {
+      at_location_ = true;
     } else {
       setState(WorkState::IDLE);
     }
   });
-  driving_.master_msg_.item = target_item_;
-  driving_.master_msg_.slam = true;
 }
 
-// 비전 처리 콜백 함수
+void QNode::sendNavigationRequest(double x, double y, double yaw, std::function<void(bool)> cb) {
+  if (!nav_client_->wait_for_service(std::chrono::seconds(2))) {
+    Q_EMIT logMessage("내비게이션 서비스를 사용할 수 없습니다");
+    setState(WorkState::IDLE);
+    cb(false);
+    return;
+  }
+  auto request = std::make_shared<robot_msgs::srv::NavigateToParcel::Request>();
+  request->x = x;
+  request->y = y;
+  request->yaw = yaw;
+  nav_client_->async_send_request(request, [this, cb](rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedFuture future) {
+    auto response = future.get();
+    QString msg = QString("내비게이션 %1: %2").arg(response->success ? "시작됨" : "실패").arg(QString::fromStdString(response->message));
+    Q_EMIT logMessage(msg);
+    cb(response->success);
+  });
+}
+
 void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg) {
-  if (!vision_msg || !at_location_) return;  // 매개변수 이름 수정
-  at_location_ = false;                      // 비전 데이터 처리 후 플래그 리셋
-  
+  if (!vision_msg || !at_location_) return;
+  at_location_ = false;
+
   if (vision_msg->ocr_detected) {
     QString detected_text = QString::fromStdString(vision_msg->ocr_text);
     float confidence = vision_msg->confidence;
 
-    Q_EMIT logMessage(QString("OCR 감지됨 - 텍스트: %1, 신뢰도: %2, FPS: %3ms")
-                      .arg(detected_text)
-                      .arg(confidence, 0, 'f', 2)
-                      .arg(vision_msg->fps));
+    Q_EMIT logMessage(QString("OCR 감지됨 - 텍스트: %1, 신뢰도: %2, FPS: %3ms").arg(detected_text).arg(confidence, 0, 'f', 2).arg(vision_msg->fps));
 
-    if (detected_text == target_item_) {
+    if (detected_text.toStdString() == target_item_) {
       Q_EMIT logMessage("목표 물품을 찾았습니다! 리프트 동작 시작");
       performItemFoundActions();
     } else {
@@ -144,56 +182,38 @@ void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vis
   }
 }
 
-// 물품 발견 시 수행할 동작
 void QNode::performItemFoundActions() {
-  const double ROTATION_SPEED = 0.5;                       // rad/s
-  const double ROTATION_DURATION = M_PI / ROTATION_SPEED;  // 180도 회전 시간
-  const double BACKWARD_SPEED = 0.1;                       // m/s
-  const double BACKWARD_DURATION = 2.0;                    // 후진 시간 (초)
+  const double ROTATION_SPEED = 0.5;
+  const double ROTATION_DURATION = M_PI / ROTATION_SPEED;
+  const double BACKWARD_SPEED = 0.1;
+  const double BACKWARD_DURATION = 2.0;
 
-  // 180도 회전
   geometry_msgs::msg::Twist twist;
   twist.angular.z = ROTATION_SPEED;
   pub_motor->publish(twist);
 
   QTimer::singleShot(ROTATION_DURATION * 1000, [this, BACKWARD_SPEED, BACKWARD_DURATION]() {
     geometry_msgs::msg::Twist backward_twist;
-    backward_twist.linear.x = -BACKWARD_SPEED;  // 후진을 위한 선속도 설정 (음수)
-    pub_motor->publish(backward_twist);         // 후진 명령 발행
-    // 후진
+    backward_twist.linear.x = -BACKWARD_SPEED;
+    pub_motor->publish(backward_twist);
     QTimer::singleShot(BACKWARD_DURATION * 1000, [this]() {
-      geometry_msgs::msg::Twist stop_twist;  // 모든 속도를 0으로 초기화
-      pub_motor->publish(stop_twist);        // 정지 명령 발행
-      // 리프트 작업
+      geometry_msgs::msg::Twist stop_twist;
+      pub_motor->publish(stop_twist);
       liftUp();
       QTimer::singleShot(3000, [this]() {
         liftStop();
-        // 홈으로 복귀
         navigateToHome();
       });
     });
   });
 }
 
-// 홈으로 복귀
 void QNode::navigateToHome() {
-  auto request = std::make_shared<robot_msgs::srv::NavigateToParcel::Request>();
-  request->x = 0.01;
-  request->y = 0.0;
-  request->yaw = 0.0;
-  nav_client_->async_send_request(request, [this](rclcpp::Client<robot_msgs::srv::NavigateToParcel>::SharedFuture future) {
-    auto response = future.get();
-    if (response->success) {
-      Q_EMIT logMessage("홈으로 복귀 중");
-      liftStop();  // 홈에 도착하면 리프트 중지
-    } else {
-      Q_EMIT logMessage("홈으로의 내비게이션 시작 실패");
-    }
-    setState(WorkState::IDLE);
-  });
+  via_waypoint_ = true;
+  going_home_ = true;
+  navigateToNextLocation();
 }
 
-// 작업 취소
 void QNode::cancelTask() {
   if (current_work_state_ == WorkState::IDLE) return;
   setState(WorkState::IDLE);
@@ -206,7 +226,6 @@ void QNode::cancelTask() {
   Q_EMIT logMessage("작업이 취소되었습니다");
 }
 
-// 상태 설정
 void QNode::setState(WorkState new_state) {
   if (current_work_state_ != new_state) {
     current_work_state_ = new_state;
@@ -220,7 +239,6 @@ void QNode::turtleRun() {
   pub_master->publish(driving_.master_msg_);
 }
 
-// 리프트 올리기
 void QNode::liftUp() {
   if (lift_controller_) {
     lift_controller_->moveUp();
@@ -228,7 +246,6 @@ void QNode::liftUp() {
   }
 }
 
-// 리프트 내리기
 void QNode::liftDown() {
   if (lift_controller_) {
     lift_controller_->moveDown();
@@ -236,7 +253,6 @@ void QNode::liftDown() {
   }
 }
 
-// 리프트 중지
 void QNode::liftStop() {
   if (lift_controller_) {
     lift_controller_->stop();
@@ -244,7 +260,6 @@ void QNode::liftStop() {
   }
 }
 
-// 리프트 높이 확인
 double QNode::getLiftHeight() {
   if (lift_controller_) {
     return lift_controller_->getCurrentHeight();
