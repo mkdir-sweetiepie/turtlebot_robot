@@ -56,7 +56,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     source ~/.bashrc
     ```
     
-4. **Install Gazebo Simulation[Fortress]
+4. **Install Gazebo Simulation[Fortress]**
     ```bash
     sudo apt install ros-humble-ros-gz
     sudo apt install ros-humble-gz-ros2-control
