@@ -1,7 +1,7 @@
 /**
  * @file /include/robot_navigation/waypoint_navigator.hpp
  *
- * @brief TurtleBot3 웨이포인트 네비게이션을 위한 헤더 - Python 코드 직접 변환
+ * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합
  *
  * @date May 2025
  **/
@@ -21,6 +21,7 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "robot_msgs/srv/ocr_scan.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -41,18 +42,15 @@ class WaypointNavigator : public rclcpp::Node {
   // 초기 위치 설정
   void setInitialPose(double x = 0.0, double y = 0.0, double z = 0.0, double w = 1.0);
 
-  // Nav2 활성화 대기 (Python waitUntilNav2Active() 구현)
+  // 시스템 활성화 대기
   bool waitUntilNav2Active();
+  bool waitForOCRService();
 
-  // 웨이포인트 로드 및 설정
-  bool loadWaypointsFromFile(const std::string& filePath = "");
-  void setWaypointsManually(const std::vector<Waypoint>& waypoints);
+  // 물품 검색 시작
+  bool startItemSearch(const std::string& item_id);
 
-  // Python 코드와 동일한 웨이포인트 설정 (하드코딩)
-  void setHardcodedWaypoints();
-
-  // 웨이포인트 탐색 시작 (Python 코드 스타일로 구현)
-  bool navigateToWaypoints(double waitTime = 3.0);
+  // 검색용 웨이포인트 설정
+  void setSearchWaypoints();
 
  private:
   // 웨이포인트 관련
@@ -64,17 +62,28 @@ class WaypointNavigator : public rclcpp::Node {
   using NavigateGoalHandle = rclcpp_action::ClientGoalHandle<NavigateAction>;
   rclcpp_action::Client<NavigateAction>::SharedPtr navigate_client_;
 
-  // 현재 탐색 상태
-  bool navigation_active_;
-  size_t current_waypoint_index_;
-  std::mutex navigation_mutex_;
+  // OCR 서비스 클라이언트
+  rclcpp::Client<robot_msgs::srv::OCRScan>::SharedPtr ocr_scan_client_;
 
-  // 웨이포인트로부터 PoseStamped 생성
+  // 검색 상태 관리
+  bool navigation_active_;
+  bool search_active_;
+  bool item_found_;
+  size_t current_waypoint_index_;
+  std::string target_item_;
+
+  // 네비게이션 관련 메서드
+  void navigateToNextWaypoint();
+  void navigateToHome();
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
+
+  // OCR 스캔 관련 메서드
+  void performOCRScan();
+  void handleOCRResult(std::shared_ptr<robot_msgs::srv::OCRScan::Response> response);
 
   // 네비게이션 콜백 함수
   void goalResponseCallback(const NavigateGoalHandle::SharedPtr& goal_handle);
-  void feedbackCallback(const NavigateGoalHandle::SharedPtr& /*goal_handle*/, const std::shared_ptr<const NavigateAction::Feedback> feedback);
+  void feedbackCallback(const NavigateGoalHandle::SharedPtr& goal_handle, const std::shared_ptr<const NavigateAction::Feedback> feedback);
   void resultCallback(const NavigateGoalHandle::WrappedResult& result);
 };
 

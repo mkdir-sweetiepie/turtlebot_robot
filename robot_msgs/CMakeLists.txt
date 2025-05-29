@@ -22,12 +22,11 @@ find_package(geometry_msgs REQUIRED)
 
 # 메시지, 서비스 파일 설정
 set(msg_files
-  "msg/MasterMsg.msg"
   "msg/VisionMsg.msg"
 )
 
 set(srv_files
-  "srv/NavigateToParcel.srv"
+  "srv/OCRScan.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

@@ -16,18 +16,18 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            # Set the TurtleBot3 model
-            SetEnvironmentVariable("TURTLEBOT3_MODEL", "burger"),
-            # Bringing our Robot
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    [
-                        get_package_share_directory("turtlebot3_gazebo"),
-                        "/launch",
-                        "/empty_world.launch.py",
-                    ]
-                )
-            ),
+            # # Set the TurtleBot3 model
+            # SetEnvironmentVariable("TURTLEBOT3_MODEL", "burger"),
+            # # Bringing our Robot
+            # IncludeLaunchDescription(
+            #     PythonLaunchDescriptionSource(
+            #         [
+            #             get_package_share_directory("turtlebot3_gazebo"),
+            #             "/launch",
+            #             "/empty_world.launch.py",
+            #         ]
+            #     )
+            # ),
             # Integrating Nav2 Stack
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
