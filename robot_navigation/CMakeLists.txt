@@ -25,12 +25,12 @@ find_package(ament_index_cpp REQUIRED)
 # 헤더 파일 경로 추가
 include_directories(include)
 
-# 네비게이션 노드 라이브러리
-add_library(${PROJECT_NAME} SHARED
-  src/robot_navigation.cpp
+# waypoint_navigator 실행 파일만 생성
+add_executable(waypoint_navigator
+  src/waypoint_navigator.cpp
 )
 
-ament_target_dependencies(${PROJECT_NAME}
+ament_target_dependencies(waypoint_navigator
   rclcpp
   rclcpp_action
   geometry_msgs
@@ -42,25 +42,7 @@ ament_target_dependencies(${PROJECT_NAME}
   ament_index_cpp
 )
 
-# 웨이포인트 네비게이터 실행 파일
-add_executable(waypoint_navigator
-  src/waypoint_navigator.cpp
-)
-
-ament_target_dependencies(waypoint_navigator
-  rclcpp
-  rclcpp_action
-  geometry_msgs
-  nav2_msgs
-  tf2
-  tf2_geometry_msgs
-  yaml-cpp
-  ament_index_cpp
-)
-
-# YAML-CPP 라이브러리 명시적 링크 추가
 target_link_libraries(waypoint_navigator
-  ${PROJECT_NAME}
   ${YAML_CPP_LIBRARIES}
 )
 
@@ -73,11 +55,8 @@ install(DIRECTORY
 
 # 실행 파일 설치
 install(TARGETS
-  ${PROJECT_NAME}
   waypoint_navigator
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 # 헤더 파일 설치
@@ -86,7 +65,6 @@ install(DIRECTORY include/
 )
 
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME})
 ament_export_dependencies(
   rclcpp
   rclcpp_action
