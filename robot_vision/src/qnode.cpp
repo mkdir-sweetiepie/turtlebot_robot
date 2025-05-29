@@ -99,19 +99,8 @@ void QNode::ocrResultCallback(const robot_msgs::msg::VisionMsg::SharedPtr msg) {
   std::string display_text = msg->ocr_data;
 
   if (msg->ocr_detected) {
-    size_t pipe1 = msg->ocr_data.find('|');
-    if (pipe1 != std::string::npos) {
-      display_text = msg->ocr_data.substr(0, pipe1);
-      size_t pipe2 = msg->ocr_data.find('|', pipe1 + 1);
-      if (pipe2 != std::string::npos) {
-        std::string conf_str = msg->ocr_data.substr(pipe2 + 1);
-        try {
-          confidence = std::stof(conf_str);
-        } catch (const std::exception& e) {
-          confidence = 0.8f;
-        }
-      }
-    }
+    display_text = msg->ocr_text;
+    confidence = msg->confidence;
   }
 
   Q_EMIT sigOCRResult(QString::fromStdString(display_text), msg->ocr_detected, confidence, msg->fps);
