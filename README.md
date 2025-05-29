@@ -74,7 +74,7 @@ This project implements a TurtleBot3-based system for a factory warehouse enviro
     ```
 
 5. **Install RPN best.pt**
-   Google Drive(https://drive.google.com/drive/folders/1EiXxVB3fff_02BRlWfy7Ie57Vk5ZDHDy)
+   \n Google Drive(https://drive.google.com/drive/folders/1EiXxVB3fff_02BRlWfy7Ie57Vk5ZDHDy)
    
 ## Execution[Remote PC]
 1. 와이파이 BARAM_IPTIME5G로 맞춘 뒤 새 터미널 열어서<br>
