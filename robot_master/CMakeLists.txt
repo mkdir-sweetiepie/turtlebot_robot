@@ -12,17 +12,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(Boost 1.71.0 REQUIRED COMPONENTS thread)
 find_package(Qt5 COMPONENTS Widgets Core Gui Network REQUIRED)
 
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(robot_msgs REQUIRED)
 find_package(turtlebot3_msgs REQUIRED)
-find_package(rclcpp_action REQUIRED)
+find_package(nav2_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 
 file(GLOB PRO_SOURCE_DIR RELATIVE ${CMAKE_SOURCE_DIR} FOLLOW_SYMLINKS src/*.cpp)
@@ -50,15 +52,17 @@ add_executable(${PROJECT_NAME}
 
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp
+  rclcpp_action
   Boost
   std_msgs
   sensor_msgs
+  geometry_msgs
   cv_bridge
   image_transport
   robot_msgs
   turtlebot3_msgs
+  nav2_msgs
   yaml_cpp_vendor
-  rclcpp_action
 )
 
 target_link_libraries(${PROJECT_NAME}

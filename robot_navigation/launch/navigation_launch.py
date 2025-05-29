@@ -7,6 +7,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
+    # 패키지 이름을 autonomous_tb3에서 robot_navigation으로 변경
     config_dir = os.path.join(get_package_share_directory("robot_navigation"), "config")
     map_file = os.path.join(config_dir, "map.yaml")
     params_file = os.path.join(config_dir, "tb3_nav_params.yaml")
@@ -49,8 +50,8 @@ def generate_launch_description():
             # Waypoint Navigator 노드 실행
             Node(
                 package="robot_navigation",
-                executable="navigation_manager",
-                name="navigation_manager",
+                executable="waypoint_navigator",
+                name="waypoint_navigator",
                 output="screen",
                 parameters=[{"waypoints_file": waypoints_file}],
             ),
