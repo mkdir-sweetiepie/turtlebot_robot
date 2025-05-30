@@ -10,7 +10,6 @@
 #include "lift_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "robot_driving.hpp"
-#include "robot_msgs/msg/master_msg.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
 #include "robot_msgs/srv/ocr_scan.hpp"
 
