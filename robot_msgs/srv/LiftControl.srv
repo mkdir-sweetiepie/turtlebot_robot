@@ -1,0 +1,11 @@
+# robot_msgs/srv/LiftControl.srv
+# 리프트 제어 서비스
+
+# Request
+string action         # 리프트 동작 ("up", "down", "stop")
+float32 duration      # 동작 시간 (선택적, 기본값: 0.0은 수동 정지까지)
+---
+# Response
+bool success          # 명령 성공 여부
+string message        # 상태 메시지
+float32 current_height # 현재 리프트 높이
