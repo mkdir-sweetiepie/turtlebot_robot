@@ -1,16 +1,15 @@
 /**
- * @file /include/robot_navigation/waypoint_navigator.hpp
- *
- * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합
- *
+ * @file waypoint_navigator.hpp
+ * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합 (수정됨)
  * @date May 2025
- **/
+ */
 
 #ifndef ROBOT_NAVIGATION_WAYPOINT_NAVIGATOR_HPP
 #define ROBOT_NAVIGATION_WAYPOINT_NAVIGATOR_HPP
 
 #include <chrono>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +21,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "robot_msgs/srv/ocr_scan.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -40,22 +40,17 @@ class WaypointNavigator : public rclcpp::Node {
   virtual ~WaypointNavigator() = default;
 
   // 초기 위치 설정
-  void setInitialPose(double x = 0.0, double y = 0.0, double z = 0.0, double w = 1.0);
+  void setInitialPose();
 
   // 시스템 활성화 대기
-  bool waitUntilNav2Active();
-  bool waitForOCRService();
-
-  // 물품 검색 시작
-  bool startItemSearch(const std::string& item_id);
+  bool waitForServices();
 
   // 검색용 웨이포인트 설정
-  void setSearchWaypoints();
+  void initializeSearchWaypoints();
 
  private:
   // 웨이포인트 관련
-  std::vector<Waypoint> waypoints_;
-  std::vector<std::string> location_names_;
+  std::vector<Waypoint> search_waypoints_;
 
   // Nav2 액션 클라이언트
   using NavigateAction = nav2_msgs::action::NavigateToPose;
@@ -65,21 +60,38 @@ class WaypointNavigator : public rclcpp::Node {
   // OCR 서비스 클라이언트
   rclcpp::Client<robot_msgs::srv::OCRScan>::SharedPtr ocr_scan_client_;
 
-  // 검색 상태 관리
-  bool navigation_active_;
-  bool search_active_;
-  bool item_found_;
-  size_t current_waypoint_index_;
+  // 마스터와 통신용
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr search_result_pub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr search_request_sub_;
+
+  // 상태 관리
   std::string target_item_;
+  bool mission_active_;
+  size_t current_waypoint_index_;
+  bool navigation_active_;
+  bool waiting_for_result_;
+
+  // 비동기 처리용
+  rclcpp::TimerBase::SharedPtr status_timer_;
+  std::shared_future<NavigateGoalHandle::SharedPtr> current_goal_future_;
 
   // 네비게이션 관련 메서드
   void navigateToNextWaypoint();
-  void navigateToHome();
+  bool navigateToWaypointBlocking(const Waypoint& waypoint);
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
+
+  // 상태 처리 메서드
+  void checkStatus();
+  void handleNavigationSuccess();
+  void handleNavigationFailure();
 
   // OCR 스캔 관련 메서드
   void performOCRScan();
   void handleOCRResult(std::shared_ptr<robot_msgs::srv::OCRScan::Response> response);
+
+  // 통신 관련 메서드
+  void searchRequestCallback(const std_msgs::msg::String::SharedPtr msg);
+  void sendSearchResult(const std::string& result);
 
   // 네비게이션 콜백 함수
   void goalResponseCallback(const NavigateGoalHandle::SharedPtr& goal_handle);

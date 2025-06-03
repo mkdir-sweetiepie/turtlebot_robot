@@ -20,20 +20,24 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
-# 메시지, 서비스 파일 설정
+# 메시지 파일 설정
 set(msg_files
   "msg/VisionMsg.msg"
 )
 
+# 서비스 파일 설정  
 set(srv_files
   "srv/OCRScan.srv"
+  "srv/LiftControl.srv"
+  "srv/ItemSearchRequest.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
   ${srv_files}
-  DEPENDENCIES std_msgs geometry_msgs
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
+
 ament_export_dependencies(rosidl_default_runtime)
 
 ament_package()

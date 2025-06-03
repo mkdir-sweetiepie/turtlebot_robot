@@ -1,239 +1,329 @@
 /**
- * @file /src/waypoint_navigator.cpp
- *
- * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합
- *
+ * @file waypoint_navigator.cpp
+ * @brief 물품 검색 통합 웨이포인트 네비게이터 (Executor 중복 사용 문제 수정)
  * @date May 2025
- **/
+ */
 
 #include "robot_navigation/waypoint_navigator.hpp"
 
-#include <chrono>
 #include <cmath>
-#include <iostream>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "ament_index_cpp/get_package_share_directory.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include <thread>
 
 namespace robot_navigation {
 
-WaypointNavigator::WaypointNavigator() : Node("waypoint_navigator"), navigation_active_(false), current_waypoint_index_(0), search_active_(false), item_found_(false), target_item_("") {
-  // 네비게이션 액션 클라이언트 초기화
+WaypointNavigator::WaypointNavigator() : Node("waypoint_navigator"), target_item_(""), mission_active_(false), current_waypoint_index_(0), navigation_active_(false), waiting_for_result_(false) {
+  // 액션 클라이언트 초기화
   navigate_client_ = rclcpp_action::create_client<NavigateAction>(this, "navigate_to_pose");
 
-  // OCR 스캔 서비스 클라이언트 초기화
+  // OCR 서비스 클라이언트 초기화
   ocr_scan_client_ = this->create_client<robot_msgs::srv::OCRScan>("ocr_scan_request");
 
-  RCLCPP_INFO(this->get_logger(), "웨이포인트 네비게이터 노드가 시작되었습니다.");
+  // 마스터와 통신용 퍼블리셔/서브스크라이버
+  search_result_pub_ = this->create_publisher<std_msgs::msg::String>("item_search_result", 10);
+  search_request_sub_ = this->create_subscription<std_msgs::msg::String>("item_search_request", 10, std::bind(&WaypointNavigator::searchRequestCallback, this, std::placeholders::_1));
+
+  // 검색용 웨이포인트 초기화
+  initializeSearchWaypoints();
+
+  // 상태 체크 타이머 (비동기 처리용)
+  status_timer_ = this->create_wall_timer(std::chrono::milliseconds(100), std::bind(&WaypointNavigator::checkStatus, this));
+
+  RCLCPP_INFO(this->get_logger(), "물품 검색 웨이포인트 네비게이터가 시작되었습니다.");
+  RCLCPP_INFO(this->get_logger(), "마스터 윈도우에서 물품 검색 요청을 기다리고 있습니다...");
 }
 
-void WaypointNavigator::setInitialPose(double x, double y, double z, double w) {
+void WaypointNavigator::initializeSearchWaypoints() {
+  search_waypoints_.clear();
+
+  // 기존에 잘 작동하던 8개 웨이포인트 (경유지 포함)
+  search_waypoints_ = {
+      {"시작 위치", 0.01, 0.0, 0.0},        // 시작 위치
+      {"경유 위치 A", 0.3, 0.0, 0.0},       // 경유 위치 A
+      {"위치 1", 0.5, 0.5, M_PI / 2},       // 위치 1 (90도)
+      {"위치 2", 0.8, 0.5, M_PI / 2},       // 위치 2 (90도)
+      {"위치 3", 0.8, -0.5, -M_PI / 2},     // 위치 3 (-90도)
+      {"위치 4", 0.5, -0.5, -M_PI / 2},     // 위치 4 (-90도)
+      {"경유 위치 A", 0.3, 0.0, 0.0},       // 경유 위치 A (복귀)
+      {"시작 위치 (귀환)", 0.01, 0.0, 0.0}  // 시작 위치 (귀환)
+  };
+
+  RCLCPP_INFO(this->get_logger(), "웨이포인트 %zu개가 설정되었습니다 (경유지 포함):", search_waypoints_.size());
+  for (size_t i = 0; i < search_waypoints_.size(); i++) {
+    const auto& wp = search_waypoints_[i];
+    RCLCPP_INFO(this->get_logger(), "%zu. %s: (%.2f, %.2f, %.1f°)", i + 1, wp.name.c_str(), wp.x, wp.y, wp.yaw * 180.0 / M_PI);
+  }
+}
+
+bool WaypointNavigator::waitForServices() {
+  RCLCPP_INFO(this->get_logger(), "필요한 서비스들을 기다리는 중...");
+
+  // Nav2 액션 서버 대기
+  if (!navigate_client_->wait_for_action_server(std::chrono::seconds(10))) {
+    RCLCPP_ERROR(this->get_logger(), "Nav2 액션 서버를 찾을 수 없습니다!");
+    return false;
+  }
+
+  // OCR 스캔 서비스 대기
+  if (!ocr_scan_client_->wait_for_service(std::chrono::seconds(10))) {
+    RCLCPP_ERROR(this->get_logger(), "OCR 스캔 서비스를 찾을 수 없습니다!");
+    return false;
+  }
+
+  RCLCPP_INFO(this->get_logger(), "모든 서비스가 준비되었습니다.");
+  return true;
+}
+
+void WaypointNavigator::setInitialPose() {
   auto initial_pose_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
 
   auto initial_pose = geometry_msgs::msg::PoseWithCovarianceStamped();
   initial_pose.header.frame_id = "map";
   initial_pose.header.stamp = this->now();
-
-  initial_pose.pose.pose.position.x = x;
-  initial_pose.pose.pose.position.y = y;
+  initial_pose.pose.pose.position.x = 0.01;
+  initial_pose.pose.pose.position.y = 0.0;
   initial_pose.pose.pose.position.z = 0.0;
-
   initial_pose.pose.pose.orientation.x = 0.0;
   initial_pose.pose.pose.orientation.y = 0.0;
-  initial_pose.pose.pose.orientation.z = z;
-  initial_pose.pose.pose.orientation.w = w;
+  initial_pose.pose.pose.orientation.z = 0.0;
+  initial_pose.pose.pose.orientation.w = 1.0;
 
+  // 여러 번 발행하여 확실히 설정
   for (int i = 0; i < 5; ++i) {
     initial_pose_pub->publish(initial_pose);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    rclcpp::sleep_for(std::chrono::milliseconds(100));
   }
 
-  RCLCPP_INFO(this->get_logger(), "초기 위치가 설정되었습니다: (%.2f, %.2f)", x, y);
+  RCLCPP_INFO(this->get_logger(), "초기 위치가 설정되었습니다.");
 }
 
-bool WaypointNavigator::waitUntilNav2Active() {
-  RCLCPP_INFO(this->get_logger(), "Nav2 시스템이 활성화될 때까지 대기 중...");
+void WaypointNavigator::searchRequestCallback(const std_msgs::msg::String::SharedPtr msg) {
+  std::string request = msg->data;
 
-  if (!navigate_client_->wait_for_action_server(std::chrono::seconds(10))) {
-    RCLCPP_ERROR(this->get_logger(), "Nav2 액션 서버가 활성화되지 않았습니다!");
-    return false;
-  }
+  if (request.find("START:") == 0) {
+    // 물품 검색 시작 요청
+    target_item_ = request.substr(6);  // "START:" 제거
 
-  std::this_thread::sleep_for(std::chrono::seconds(2));
-  RCLCPP_INFO(this->get_logger(), "Nav2 시스템 활성화 완료!");
-  return true;
-}
+    if (mission_active_) {
+      RCLCPP_WARN(this->get_logger(), "이미 미션이 진행 중입니다.");
+      return;
+    }
 
-bool WaypointNavigator::waitForOCRService() {
-  RCLCPP_INFO(this->get_logger(), "OCR 서비스 대기 중...");
+    RCLCPP_INFO(this->get_logger(), "\n🚀 물품 '%s' 검색 미션을 시작합니다!", target_item_.c_str());
 
-  if (!ocr_scan_client_->wait_for_service(std::chrono::seconds(10))) {
-    RCLCPP_ERROR(this->get_logger(), "OCR 서비스가 활성화되지 않았습니다!");
-    return false;
-  }
+    mission_active_ = true;
+    current_waypoint_index_ = 0;
+    waiting_for_result_ = false;
 
-  RCLCPP_INFO(this->get_logger(), "OCR 서비스 활성화 완료!");
-  return true;
-}
+    // 초기 설정
+    setInitialPose();
 
-void WaypointNavigator::setSearchWaypoints() {
-  waypoints_.clear();
-  location_names_.clear();
+    if (!waitForServices()) {
+      mission_active_ = false;
+      sendSearchResult("ERROR:서비스 연결 실패");
+      return;
+    }
 
-  // 검색용 4개 거점 설정
-  location_names_ = {"거점1", "거점2", "거점3", "거점4"};
+    // 2초 대기 후 시작
+    rclcpp::sleep_for(std::chrono::seconds(2));
 
-  std::vector<std::tuple<double, double, double>> coords = {
-      std::make_tuple(0.5, 0.5, M_PI / 2),    // 거점1
-      std::make_tuple(0.8, 0.5, M_PI / 2),    // 거점2
-      std::make_tuple(0.8, -0.5, -M_PI / 2),  // 거점3
-      std::make_tuple(0.5, -0.5, -M_PI / 2),  // 거점4
-  };
+    // 첫 번째 웨이포인트로 이동 시작
+    navigateToNextWaypoint();
 
-  for (size_t i = 0; i < coords.size(); i++) {
-    Waypoint wp;
-    wp.name = location_names_[i];
-    wp.x = std::get<0>(coords[i]);
-    wp.y = std::get<1>(coords[i]);
-    wp.yaw = std::get<2>(coords[i]);
-    waypoints_.push_back(wp);
-
-    RCLCPP_INFO(this->get_logger(), "검색 거점 %zu: %s (x=%.2f, y=%.2f, 방향=%.1f°)", i + 1, wp.name.c_str(), wp.x, wp.y, wp.yaw * 180.0 / M_PI);
+  } else if (request == "CANCEL") {
+    // 미션 취소 요청
+    RCLCPP_INFO(this->get_logger(), "미션 취소 요청을 받았습니다.");
+    mission_active_ = false;
+    navigation_active_ = false;
+    waiting_for_result_ = false;
   }
 }
 
-bool WaypointNavigator::startItemSearch(const std::string& item_id) {
-  if (search_active_) {
-    RCLCPP_WARN(this->get_logger(), "이미 검색이 진행 중입니다.");
-    return false;
-  }
+void WaypointNavigator::sendSearchResult(const std::string& result) {
+  auto msg = std_msgs::msg::String();
+  msg.data = result;
+  search_result_pub_->publish(msg);
 
-  target_item_ = item_id;
-  search_active_ = true;
-  item_found_ = false;
-  current_waypoint_index_ = 0;
-
-  RCLCPP_INFO(this->get_logger(), "물품 '%s' 검색을 시작합니다.", item_id.c_str());
-
-  // 초기 위치 설정 및 시스템 준비
-  setInitialPose(0.01, 0.0, 0.01, 1.0);
-  setSearchWaypoints();
-
-  if (!waitUntilNav2Active() || !waitForOCRService()) {
-    search_active_ = false;
-    return false;
-  }
-
-  // 첫 번째 거점으로 이동 시작
-  navigateToNextWaypoint();
-  return true;
+  RCLCPP_INFO(this->get_logger(), "📡 마스터에 결과 전송: %s", result.c_str());
 }
 
 void WaypointNavigator::navigateToNextWaypoint() {
-  if (!search_active_ || item_found_) return;
+  if (!mission_active_) return;
 
   // 모든 거점 검색 완료 확인
-  if (current_waypoint_index_ >= waypoints_.size()) {
-    RCLCPP_INFO(this->get_logger(), "모든 거점에서 물품 '%s'을(를) 찾지 못했습니다.", target_item_.c_str());
-    search_active_ = false;
+  if (current_waypoint_index_ >= search_waypoints_.size()) {
+    RCLCPP_INFO(this->get_logger(), "❌ 모든 거점에서 물품 '%s'을(를) 찾지 못했습니다.", target_item_.c_str());
+    sendSearchResult("NOT_FOUND:" + target_item_);
+    sendSearchResult("MISSION_COMPLETE");
+    mission_active_ = false;
     return;
   }
 
-  const auto& waypoint = waypoints_[current_waypoint_index_];
-  RCLCPP_INFO(this->get_logger(), "%s로 이동 중... (%zu/%zu)", waypoint.name.c_str(), current_waypoint_index_ + 1, waypoints_.size());
+  const auto& waypoint = search_waypoints_[current_waypoint_index_];
+  RCLCPP_INFO(this->get_logger(), "\n🎯 %s로 이동 중... (%zu/%zu)", waypoint.name.c_str(), current_waypoint_index_ + 1, search_waypoints_.size());
 
   auto goal_pose = createPoseFromWaypoint(waypoint);
   auto goal_msg = NavigateAction::Goal();
   goal_msg.pose = goal_pose;
 
   navigation_active_ = true;
+  waiting_for_result_ = true;
 
   auto send_goal_options = rclcpp_action::Client<NavigateAction>::SendGoalOptions();
   send_goal_options.goal_response_callback = std::bind(&WaypointNavigator::goalResponseCallback, this, std::placeholders::_1);
   send_goal_options.feedback_callback = std::bind(&WaypointNavigator::feedbackCallback, this, std::placeholders::_1, std::placeholders::_2);
   send_goal_options.result_callback = std::bind(&WaypointNavigator::resultCallback, this, std::placeholders::_1);
 
-  navigate_client_->async_send_goal(goal_msg, send_goal_options);
+  // 비동기 목표 전송
+  current_goal_future_ = navigate_client_->async_send_goal(goal_msg, send_goal_options);
+}
+
+void WaypointNavigator::checkStatus() {
+  if (!mission_active_ || !waiting_for_result_) return;
+
+  // 목표 응답 체크
+  if (current_goal_future_.valid()) {
+    auto status = current_goal_future_.wait_for(std::chrono::milliseconds(0));
+    if (status == std::future_status::ready) {
+      auto goal_handle = current_goal_future_.get();
+      if (!goal_handle) {
+        RCLCPP_ERROR(this->get_logger(), "❌ 목표가 거부되었습니다!");
+        handleNavigationFailure();
+      }
+      // 목표가 수락되면 result_callback에서 처리됨
+    }
+  }
+}
+
+void WaypointNavigator::handleNavigationSuccess() {
+  if (current_waypoint_index_ < search_waypoints_.size()) {
+    const auto& waypoint = search_waypoints_[current_waypoint_index_];
+    RCLCPP_INFO(this->get_logger(), "✅ %s 도착 성공!", waypoint.name.c_str());
+
+    // 물품 검색은 "위치 1~4"에서만 수행
+    if (waypoint.name.find("위치") != std::string::npos && waypoint.name != "시작 위치" && waypoint.name != "시작 위치 (귀환)") {
+      // OCR 스캔 수행
+      performOCRScan();
+    } else {
+      // 경유지나 시작/귀환 위치에서는 3초 대기 후 다음으로
+      RCLCPP_INFO(this->get_logger(), "⏱️ 경유지에서 3초 대기...");
+      rclcpp::sleep_for(std::chrono::seconds(3));
+      current_waypoint_index_++;
+      navigateToNextWaypoint();
+    }
+  }
+}
+
+void WaypointNavigator::handleNavigationFailure() {
+  RCLCPP_WARN(this->get_logger(), "⚠️ 네비게이션 실패, 다음 거점으로 이동");
+  current_waypoint_index_++;
+  navigateToNextWaypoint();
 }
 
 void WaypointNavigator::performOCRScan() {
-  if (!search_active_ || current_waypoint_index_ >= waypoints_.size()) return;
+  if (!mission_active_ || current_waypoint_index_ >= search_waypoints_.size()) return;
 
-  const auto& current_waypoint = waypoints_[current_waypoint_index_];
+  const auto& current_waypoint = search_waypoints_[current_waypoint_index_];
 
-  RCLCPP_INFO(this->get_logger(), "%s에서 OCR 스캔 시작", current_waypoint.name.c_str());
+  RCLCPP_INFO(this->get_logger(), "🔍 %s에서 '%s' 검색 중...", current_waypoint.name.c_str(), target_item_.c_str());
 
+  // OCR 스캔 서비스 요청 생성
   auto request = std::make_shared<robot_msgs::srv::OCRScan::Request>();
   request->target_item_id = target_item_;
   request->current_location = current_waypoint.name;
   request->location_index = static_cast<int32_t>(current_waypoint_index_);
 
+  // 비동기 서비스 호출
   auto result_future = ocr_scan_client_->async_send_request(request);
 
-  // 블로킹 방식으로 응답 대기 (15초 타임아웃)
+  // 결과 대기 (최대 15초)
   auto status = result_future.wait_for(std::chrono::seconds(15));
 
-  if (status == std::future_status::ready) {
-    auto response = result_future.get();
-    handleOCRResult(response);
-  } else {
-    RCLCPP_ERROR(this->get_logger(), "OCR 스캔 타임아웃");
-    // 다음 거점으로 이동
+  if (status != std::future_status::ready) {
+    RCLCPP_ERROR(this->get_logger(), "❌ OCR 스캔 서비스 타임아웃!");
     current_waypoint_index_++;
     navigateToNextWaypoint();
+    return;
   }
+
+  auto response = result_future.get();
+  handleOCRResult(response);
 }
 
 void WaypointNavigator::handleOCRResult(std::shared_ptr<robot_msgs::srv::OCRScan::Response> response) {
-  RCLCPP_INFO(this->get_logger(), "OCR 결과: %s", response->message.c_str());
+  RCLCPP_INFO(this->get_logger(), "📋 OCR 결과: %s", response->message.c_str());
 
   if (response->item_found) {
-    RCLCPP_INFO(this->get_logger(), "목표 물품 '%s' 발견! Master 노드에서 리프트 동작을 처리합니다", target_item_.c_str());
-    item_found_ = true;
-    search_active_ = false;
+    RCLCPP_INFO(this->get_logger(), "\n🎉 목표 물품 '%s'을(를) 발견했습니다!", target_item_.c_str());
 
-    // Master 노드가 자동으로 리프트 동작을 처리하므로 대기 후 홈으로 복귀
-    std::this_thread::sleep_for(std::chrono::seconds(8));  // 리프트 동작 완료 대기
-    navigateToHome();
+    // 발견 결과를 마스터에 전송
+    sendSearchResult("FOUND:" + target_item_);
+
+    // 8초 대기 (마스터에서 리프트 동작 수행)
+    RCLCPP_INFO(this->get_logger(), "⏱️ 리프트 동작 완료 대기 중... (8초)");
+    rclcpp::sleep_for(std::chrono::seconds(8));
+
+    RCLCPP_INFO(this->get_logger(), "🏠 홈으로 복귀합니다...");
+
+    // 남은 경유지들을 거쳐서 홈으로 복귀
+    for (size_t j = current_waypoint_index_ + 1; j < search_waypoints_.size(); j++) {
+      if (!mission_active_) break;
+
+      const auto& return_waypoint = search_waypoints_[j];
+      RCLCPP_INFO(this->get_logger(), "🎯 %s로 이동 중... (복귀 경로)", return_waypoint.name.c_str());
+
+      if (!navigateToWaypointBlocking(return_waypoint)) {
+        RCLCPP_WARN(this->get_logger(), "⚠️ %s 이동 실패, 계속 진행", return_waypoint.name.c_str());
+      } else {
+        RCLCPP_INFO(this->get_logger(), "✅ %s 도착!", return_waypoint.name.c_str());
+      }
+    }
+
+    RCLCPP_INFO(this->get_logger(), "🏁 미션 완료! 홈 복귀 성공!");
+    sendSearchResult("MISSION_COMPLETE");
+    mission_active_ = false;
 
   } else {
-    RCLCPP_INFO(this->get_logger(), "물품을 찾지 못했습니다. 다음 거점으로 이동");
+    RCLCPP_INFO(this->get_logger(), "❌ %s에서 물품을 찾지 못했습니다. 다음 위치로 이동합니다.", search_waypoints_[current_waypoint_index_].name.c_str());
     current_waypoint_index_++;
     navigateToNextWaypoint();
   }
 }
 
-void WaypointNavigator::navigateToHome() {
-  RCLCPP_INFO(this->get_logger(), "홈으로 복귀합니다");
-
-  // 홈 위치로 이동
-  Waypoint home_waypoint;
-  home_waypoint.name = "홈";
-  home_waypoint.x = 0.01;
-  home_waypoint.y = 0.0;
-  home_waypoint.yaw = 0.0;
-
-  auto goal_pose = createPoseFromWaypoint(home_waypoint);
+bool WaypointNavigator::navigateToWaypointBlocking(const Waypoint& waypoint) {
+  auto goal_pose = createPoseFromWaypoint(waypoint);
   auto goal_msg = NavigateAction::Goal();
   goal_msg.pose = goal_pose;
 
-  navigation_active_ = true;
-
   auto send_goal_options = rclcpp_action::Client<NavigateAction>::SendGoalOptions();
-  send_goal_options.result_callback = [this](const NavigateGoalHandle::WrappedResult& result) {
-    if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-      RCLCPP_INFO(this->get_logger(), "홈 복귀 완료! 물품 검색 미션 종료");
-    } else {
-      RCLCPP_WARN(this->get_logger(), "홈 복귀 실패");
-    }
-    navigation_active_ = false;
-  };
 
-  navigate_client_->async_send_goal(goal_msg, send_goal_options);
+  // 비동기 목표 전송
+  auto goal_handle_future = navigate_client_->async_send_goal(goal_msg, send_goal_options);
+
+  // 목표 수락 대기 (블로킹)
+  auto wait_result = goal_handle_future.wait_for(std::chrono::seconds(5));
+  if (wait_result != std::future_status::ready) {
+    RCLCPP_ERROR(this->get_logger(), "❌ 목표 전송 타임아웃!");
+    return false;
+  }
+
+  auto goal_handle = goal_handle_future.get();
+  if (!goal_handle) {
+    RCLCPP_ERROR(this->get_logger(), "❌ 목표가 거부되었습니다!");
+    return false;
+  }
+
+  // 결과 대기 (블로킹)
+  auto result_future = navigate_client_->async_get_result(goal_handle);
+  auto result_wait = result_future.wait_for(std::chrono::seconds(30));
+
+  if (result_wait != std::future_status::ready) {
+    RCLCPP_WARN(this->get_logger(), "⚠️ 네비게이션 타임아웃 (30초). 목표 취소.");
+    navigate_client_->async_cancel_goal(goal_handle);
+    return false;
+  }
+
+  auto result = result_future.get();
+  return (result.code == rclcpp_action::ResultCode::SUCCEEDED);
 }
 
 geometry_msgs::msg::PoseStamped WaypointNavigator::createPoseFromWaypoint(const Waypoint& waypoint) {
@@ -244,6 +334,7 @@ geometry_msgs::msg::PoseStamped WaypointNavigator::createPoseFromWaypoint(const 
   pose.pose.position.y = waypoint.y;
   pose.pose.position.z = 0.0;
 
+  // 쿼터니언 계산
   double cy = std::cos(waypoint.yaw * 0.5);
   double sy = std::sin(waypoint.yaw * 0.5);
   pose.pose.orientation.x = 0.0;
@@ -256,68 +347,57 @@ geometry_msgs::msg::PoseStamped WaypointNavigator::createPoseFromWaypoint(const 
 
 void WaypointNavigator::goalResponseCallback(const NavigateGoalHandle::SharedPtr& goal_handle) {
   if (!goal_handle) {
-    RCLCPP_ERROR(this->get_logger(), "목표 거부됨");
-    navigation_active_ = false;
-    // 다음 거점으로 이동 시도
-    current_waypoint_index_++;
-    navigateToNextWaypoint();
+    RCLCPP_ERROR(this->get_logger(), "❌ 목표 거부됨");
+    handleNavigationFailure();
   } else {
-    RCLCPP_INFO(this->get_logger(), "목표 수락됨");
+    RCLCPP_INFO(this->get_logger(), "✅ 목표 수락됨");
   }
 }
 
 void WaypointNavigator::feedbackCallback(const NavigateGoalHandle::SharedPtr& /*goal_handle*/, const std::shared_ptr<const NavigateAction::Feedback> feedback) {
-  if (current_waypoint_index_ < waypoints_.size()) {
+  if (current_waypoint_index_ < search_waypoints_.size()) {
     auto current_pose = feedback->current_pose.pose;
-    double target_x = waypoints_[current_waypoint_index_].x;
-    double target_y = waypoints_[current_waypoint_index_].y;
+    double target_x = search_waypoints_[current_waypoint_index_].x;
+    double target_y = search_waypoints_[current_waypoint_index_].y;
 
     double dx = target_x - current_pose.position.x;
     double dy = target_y - current_pose.position.y;
     double distance = std::sqrt(dx * dx + dy * dy);
 
-    RCLCPP_DEBUG(this->get_logger(), "현재 위치: x=%.2f, y=%.2f, 목표까지 거리: %.2fm", current_pose.position.x, current_pose.position.y, distance);
+    // 5초마다 한 번씩만 로그 출력
+    static auto last_log_time = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_log_time).count() >= 5) {
+      RCLCPP_INFO(this->get_logger(), "🚶 이동 중... 목표까지 거리: %.2fm", distance);
+      last_log_time = now;
+    }
   }
 }
 
 void WaypointNavigator::resultCallback(const NavigateGoalHandle::WrappedResult& result) {
   navigation_active_ = false;
+  waiting_for_result_ = false;
 
   if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-    if (current_waypoint_index_ < waypoints_.size()) {
-      const auto& waypoint = waypoints_[current_waypoint_index_];
-      RCLCPP_INFO(this->get_logger(), "%s 도착 성공!", waypoint.name.c_str());
-
-      // 거점 도착 후 OCR 스캔 시작
-      performOCRScan();
-    }
+    handleNavigationSuccess();
   } else {
-    RCLCPP_WARN(this->get_logger(), "네비게이션 실패, 다음 거점으로 이동");
-    current_waypoint_index_++;
-    navigateToNextWaypoint();
+    handleNavigationFailure();
   }
 }
 
 }  // namespace robot_navigation
 
-// 메인 함수
+// 메인 함수 (수정됨)
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
 
-  auto waypoint_navigator = std::make_shared<robot_navigation::WaypointNavigator>();
+  auto navigator = std::make_shared<robot_navigation::WaypointNavigator>();
 
-  // 사용자 입력을 통한 물품 검색 시작 (실제로는 서비스 호출 또는 토픽을 통해 받을 수 있음)
-  std::string target_item = "정우경";  // 예시 아이템
+  RCLCPP_INFO(navigator->get_logger(), "🤖 웨이포인트 네비게이터가 준비되었습니다.");
+  RCLCPP_INFO(navigator->get_logger(), "📱 마스터 윈도우에서 물품 검색을 시작하세요!");
 
-  if (argc > 1) {
-    target_item = argv[1];
-  }
-
-  RCLCPP_INFO(waypoint_navigator->get_logger(), "물품 '%s' 검색을 시작합니다.", target_item.c_str());
-
-  waypoint_navigator->startItemSearch(target_item);
-
-  rclcpp::spin(waypoint_navigator);
+  // 단순한 spin 사용 (executor 중복 문제 해결)
+  rclcpp::spin(navigator);
 
   rclcpp::shutdown();
   return 0;

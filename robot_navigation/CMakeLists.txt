@@ -17,15 +17,14 @@ find_package(rclcpp_action REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(robot_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(yaml-cpp REQUIRED)
-find_package(ament_index_cpp REQUIRED)
 
 # 헤더 파일 경로 추가
 include_directories(include)
 
-# waypoint_navigator 실행 파일만 생성
+# waypoint_navigator 실행 파일 생성
 add_executable(waypoint_navigator
   src/waypoint_navigator.cpp
 )
@@ -36,14 +35,9 @@ ament_target_dependencies(waypoint_navigator
   geometry_msgs
   nav2_msgs
   robot_msgs
+  std_msgs
   tf2
   tf2_geometry_msgs
-  yaml-cpp
-  ament_index_cpp
-)
-
-target_link_libraries(waypoint_navigator
-  ${YAML_CPP_LIBRARIES}
 )
 
 # 설정 파일 및 런치 파일 설치
@@ -71,10 +65,9 @@ ament_export_dependencies(
   geometry_msgs
   nav2_msgs
   robot_msgs
+  std_msgs
   tf2
   tf2_geometry_msgs
-  yaml-cpp
-  ament_index_cpp
 )
 
 if(BUILD_TESTING)
