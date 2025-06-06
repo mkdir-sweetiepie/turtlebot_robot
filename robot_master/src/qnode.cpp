@@ -9,7 +9,7 @@
 
 namespace robot_master {
 
-QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false), ocr_scan_active_(false), performance(false) {
+QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false), ocr_scan_active_(false), performance(false), precise_step_(0), navigation_mode_(false) {
   int argc = 0;
   char** argv = nullptr;
   rclcpp::init(argc, argv);
@@ -28,7 +28,7 @@ QNode::~QNode() {
 }
 
 void QNode::run() {
-  rclcpp::WallRate loop_rate(50);
+  rclcpp::WallRate loop_rate(20);
   while (rclcpp::ok()) {
     rclcpp::spin_some(node);
     turtleRun();
@@ -44,6 +44,8 @@ void QNode::initPubSub() {
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
   sub_vision = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 100, std::bind(&QNode::visionCallback, this, std::placeholders::_1));
 
+  // 정밀 제어 서비스 클라이언트 (새로 추가)
+  precise_control_client_ = node->create_client<robot_msgs::srv::PreciseControl>("precise_control");
 
   // 네비게이션 시스템과 통신용
   search_request_pub = node->create_publisher<std_msgs::msg::String>("item_search_request", 10);
@@ -56,6 +58,48 @@ void QNode::initPubSub() {
   RCLCPP_INFO(node->get_logger(), "QNode 초기화 완료 (OCR 토픽 방식)");
 }
 
+// 정밀 제어 서비스 호출
+void QNode::callPreciseControlService(const std::string& action) {
+  if (!precise_control_client_->wait_for_service(std::chrono::seconds(10))) {
+    Q_EMIT logMessage("정밀 제어 서비스를 사용할 수 없습니다.");
+    RCLCPP_ERROR(node->get_logger(), "정밀 제어 서비스 연결 실패");
+    lift_performing_action_ = false;
+    return;
+  }
+
+  auto request = std::make_shared<robot_msgs::srv::PreciseControl::Request>();
+  request->action = action;
+
+  Q_EMIT logMessage(QString("정밀 제어 서비스 호출: %1").arg(QString::fromStdString(action)));
+  RCLCPP_INFO(node->get_logger(), "정밀 제어 서비스 호출: %s", action.c_str());
+
+  // 비동기 서비스 호출 (콜백 방식)
+  auto future = precise_control_client_->async_send_request(request, [this, action](rclcpp::Client<robot_msgs::srv::PreciseControl>::SharedFuture future) {
+    try {
+      auto response = future.get();
+
+      if (response->success) {
+        Q_EMIT logMessage(QString("정밀 제어 완료: %1 (%.2f초 소요)").arg(QString::fromStdString(response->message)).arg(response->duration));
+
+        if (action == "pickup_sequence") {
+          // 전체 픽업 시퀀스 완료
+          setState(WorkState::COMPLETED);
+          lift_performing_action_ = false;
+          RCLCPP_INFO(node->get_logger(), "물품 픽업 미션 완료");
+          performance = true;
+        }
+      } else {
+        Q_EMIT logMessage(QString("정밀 제어 실패: %1").arg(QString::fromStdString(response->message)));
+        setState(WorkState::IDLE);
+        lift_performing_action_ = false;
+      }
+    } catch (const std::exception& e) {
+      Q_EMIT logMessage(QString("정밀 제어 서비스 오류: %1").arg(e.what()));
+      setState(WorkState::IDLE);
+      lift_performing_action_ = false;
+    }
+  });
+}
 
 std::string QNode::normalizeString(const std::string& str) {
   std::string result;
@@ -147,7 +191,7 @@ void QNode::startFindParcelTask(const std::string& item) {
 
   target_item_ = item;
   setState(WorkState::WORKING);
-
+  navigation_mode_ = true;
   Q_EMIT logMessage(QString("'%1' 물품 검색 작업을 시작합니다.").arg(QString::fromStdString(item)));
 
   // 네비게이션 시스템에 검색 요청 전송
@@ -165,19 +209,22 @@ void QNode::searchResultCallback(const std_msgs::msg::String::SharedPtr msg) {
     // 물품 발견됨
     std::string found_item = result.substr(6);
     Q_EMIT logMessage(QString("물품 '%1'을(를) 발견했습니다!").arg(QString::fromStdString(found_item)));
-
-    // 1초 후 리프트 동작 시작
-    QTimer::singleShot(1000, [this]() { performItemFoundActions(); });
+    // 네비게이션 모드 비활성화 (정밀 제어를 위해)
+    navigation_mode_ = false;
+    Q_EMIT logMessage("정밀 제어 모드로 전환");
 
   } else if (result.find("NOT_FOUND:") == 0) {
     // 물품 찾지 못함
     std::string item = result.substr(10);
     Q_EMIT logMessage(QString("모든 거점을 검색했지만 물품 '%1'을(를) 찾지 못했습니다.").arg(QString::fromStdString(item)));
+    // 네비게이션 모드 비활성화
+    navigation_mode_ = false;
     setState(WorkState::IDLE);
 
   } else if (result.find("MISSION_COMPLETE") == 0) {
     // 미션 완료
     Q_EMIT logMessage("물품 검색 미션이 완료되었습니다!");
+    navigation_mode_ = false;
     setState(WorkState::COMPLETED);
   }
 }
@@ -270,49 +317,18 @@ void QNode::sendOCRResult(bool found, const std::string& detected_text, float co
 }
 
 void QNode::performItemFoundActions() {
-  if (lift_performing_action_) return;
+  if (lift_performing_action_) {
+    Q_EMIT logMessage("이미 리프트 동작이 진행 중입니다.");
+    return;
+  }
 
   lift_performing_action_ = true;
-  RCLCPP_INFO(node->get_logger(), "물품 발견 후 리프트 동작 시작");
-  Q_EMIT logMessage("물품 발견! 180도 회전 후 후진하여 리프트 동작 시작");
 
-  const double ROTATION_SPEED = 0.5;
-  const double ROTATION_DURATION = M_PI / ROTATION_SPEED;
-  const double BACKWARD_SPEED = 0.1;
-  const double BACKWARD_DURATION = 2.0;
+  RCLCPP_INFO(node->get_logger(), "물품 발견 후 정밀 제어 서비스 호출 시작");
+  Q_EMIT logMessage("물품 발견! 정밀 제어 서비스로 픽업 시퀀스 시작");
 
-  // 180도 회전
-  geometry_msgs::msg::Twist twist;
-  twist.angular.z = ROTATION_SPEED;
-  pub_motor->publish(twist);
-
-  QTimer::singleShot(ROTATION_DURATION * 1000, [this, BACKWARD_SPEED, BACKWARD_DURATION]() {
-    Q_EMIT logMessage("회전 완료, 후진 시작");
-
-    // 후진
-    geometry_msgs::msg::Twist backward_twist;
-    backward_twist.linear.x = -BACKWARD_SPEED;
-    pub_motor->publish(backward_twist);
-
-    QTimer::singleShot(BACKWARD_DURATION * 1000, [this]() {
-      Q_EMIT logMessage("후진 완료, 정지 후 리프트 올림");
-
-      // 정지
-      geometry_msgs::msg::Twist stop_twist;
-      pub_motor->publish(stop_twist);
-
-      // 리프트 올림
-      liftUp();
-
-      QTimer::singleShot(1000, [this]() {
-        Q_EMIT logMessage("리프트 동작 완료");
-        liftStop();
-        setState(WorkState::COMPLETED);
-        lift_performing_action_ = false;
-      });
-    });
-  });
-  performance = true;
+  // 전체 픽업 시퀀스를 한 번에 서비스로 호출
+  callPreciseControlService("pickup_sequence");
 }
 
 void QNode::cancelTask() {
@@ -324,7 +340,7 @@ void QNode::cancelTask() {
   auto msg = std_msgs::msg::String();
   msg.data = "CANCEL";
   search_request_pub->publish(msg);
-
+  navigation_mode_ = false;
   // 상태 초기화
   ocr_scan_active_ = false;
   setState(WorkState::IDLE);
@@ -347,8 +363,10 @@ void QNode::setState(WorkState new_state) {
 }
 
 void QNode::turtleRun() {
-  driving_.go();
-  pub_motor->publish(driving_.motor_value_);
+  if (!navigation_mode_) {
+    driving_.go();
+    pub_motor->publish(driving_.motor_value_);
+  }
 }
 
 void QNode::liftUp() {

@@ -44,8 +44,8 @@ WaypointNavigator::WaypointNavigator()
 void WaypointNavigator::initializeSearchWaypoints() {
   search_waypoints_.clear();
 
-  search_waypoints_ = {{"시작 위치", 0.01, 0.0, 0.0},    {"경유 위치 A", 0.3, 0.0, 0.0},   {"위치 1", 0.5, 0.5, M_PI / 2}, {"위치 2", 0.8, 0.5, M_PI / 2},
-                       {"위치 3", 0.8, -0.5, -M_PI / 2}, {"위치 4", 0.5, -0.5, -M_PI / 2}, {"경유 위치 A", 0.3, 0.0, 0.0}, {"시작 위치 (귀환)", 0.01, 0.0, 0.0}};
+  search_waypoints_ = {{"시작 위치", 0.01, 0.0, 0.0},    {"경유 위치 A", 0.5, 0.0, 0.0},   {"위치 1", 0.5, 0.5, M_PI / 2}, {"위치 2", 1.2, 0.5, M_PI / 2},
+                       {"위치 3", 1.2, -0.5, -M_PI / 2}, {"위치 4", 0.5, -0.5, -M_PI / 2}, {"경유 위치 A", 0.3, 0.0, M_PI}, {"시작 위치 (귀환)", 0.01, 0.0, M_PI}};
 
   RCLCPP_INFO(this->get_logger(), "웨이포인트 %zu개가 설정되었습니다:", search_waypoints_.size());
   for (size_t i = 0; i < search_waypoints_.size(); i++) {
@@ -262,8 +262,8 @@ void WaypointNavigator::ocrResultCallback(const robot_msgs::msg::OCRResult::Shar
     sendSearchResult("FOUND:" + target_item_);
 
     // 10초 대기 (마스터에서 리프트 동작 수행)
-    RCLCPP_INFO(this->get_logger(), "리프트 동작 완료 대기 중... (10초)");
-    rclcpp::sleep_for(std::chrono::seconds(10));
+    RCLCPP_INFO(this->get_logger(), "리프트 동작 완료 대기 중... (15분)");
+    rclcpp::sleep_for(std::chrono::seconds(15));
 
     RCLCPP_INFO(this->get_logger(), "홈으로 복귀합니다...");
 

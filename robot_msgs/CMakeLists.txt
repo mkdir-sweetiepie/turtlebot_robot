@@ -29,7 +29,7 @@ set(msg_files
 
 
 set(srv_files
-  "srv/LiftControl.srv"
+  "srv/PreciseControl.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

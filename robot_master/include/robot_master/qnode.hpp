@@ -15,6 +15,7 @@
 #include "robot_msgs/msg/ocr_request.hpp"
 #include "robot_msgs/msg/ocr_result.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
+#include "robot_msgs/srv/precise_control.hpp"  // 정밀 제어 서비스 추가
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 
@@ -54,7 +55,7 @@ class QNode : public QThread {
   void run();
 
  private:
-  // 상태 관리 (타이머 제거!)
+  // 상태 관리
   int precise_step_;  // 0: 대기, 1: 회전 중, 2: 후진 중, 3: 완료
 
   // ROS2 관련
@@ -72,6 +73,9 @@ class QNode : public QThread {
   rclcpp::Subscription<robot_msgs::msg::OCRRequest>::SharedPtr ocr_request_sub_;
   rclcpp::Publisher<robot_msgs::msg::OCRResult>::SharedPtr ocr_result_pub_;
 
+  // 정밀 제어 서비스 클라이언트 추가
+  rclcpp::Client<robot_msgs::srv::PreciseControl>::SharedPtr precise_control_client_;
+
   std::shared_ptr<LiftController> lift_controller_;
 
   // 작업 상태 관리
@@ -79,6 +83,8 @@ class QNode : public QThread {
   std::string target_item_;
   bool lift_performing_action_;
   bool ocr_scan_active_;
+  
+  bool navigation_mode_;  // 네비게이션 모드 플래그
 
   // OCR 토픽 관련 상태
   int64_t current_request_id_;
@@ -98,6 +104,9 @@ class QNode : public QThread {
   void sendOCRResult(bool found, const std::string& detected_text, float confidence, const std::string& message);
 
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
+
+  // 정밀 제어 서비스 호출 메서드 추가
+  void callPreciseControlService(const std::string& action);
 
   // 향상된 텍스트 매칭 함수들
   std::string normalizeString(const std::string& str);
