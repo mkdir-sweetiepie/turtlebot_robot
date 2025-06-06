@@ -12,8 +12,9 @@
 #include "rclcpp/rclcpp.hpp"
 #include "robot_driving.hpp"
 #include "robot_msgs/msg/master_msg.hpp"
+#include "robot_msgs/msg/ocr_request.hpp"
+#include "robot_msgs/msg/ocr_result.hpp"
 #include "robot_msgs/msg/vision_msg.hpp"
-#include "robot_msgs/srv/ocr_scan.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 
@@ -39,11 +40,9 @@ class QNode : public QThread {
   void liftStop();
   double getLiftHeight();
 
-  void sendPreciseCommand(uint8_t cmd);
-  void checkPreciseActionProgress();
-
   RobotDriving driving_;  // 로봇 주행 제어
   WorkState getCurrentState() const { return current_work_state_; }
+  bool performance;
 
  Q_SIGNALS:
   void rosShutDown();
@@ -55,40 +54,36 @@ class QNode : public QThread {
   void run();
 
  private:
+  // 상태 관리 (타이머 제거!)
+  int precise_step_;  // 0: 대기, 1: 회전 중, 2: 후진 중, 3: 완료
+
   // ROS2 관련
   std::shared_ptr<rclcpp::Node> node;
 
   // Publishers & Subscribers
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
-  // 정밀 제어 통신
-  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr precise_cmd_pub_;
-  rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr precise_status_sub_;
-
-  // 상태 관리 (타이머 제거!)
-  int precise_step_;  // 0: 대기, 1: 회전 중, 2: 후진 중, 3: 완료
 
   // 네비게이션 시스템과 통신용 퍼블리셔/서브스크라이버
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr search_request_pub;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr search_result_sub;
 
-  // OCR 스캔 서비스 (기존 유지)
-  rclcpp::Service<robot_msgs::srv::OCRScan>::SharedPtr ocr_scan_service_;
+  // OCR 토픽 통신 (서비스 완전 제거)
+  rclcpp::Subscription<robot_msgs::msg::OCRRequest>::SharedPtr ocr_request_sub_;
+  rclcpp::Publisher<robot_msgs::msg::OCRResult>::SharedPtr ocr_result_pub_;
 
   std::shared_ptr<LiftController> lift_controller_;
 
   // 작업 상태 관리
   WorkState current_work_state_;
   std::string target_item_;
-  bool lift_performing_action_{false};
-  bool ocr_scan_active_{false};
+  bool lift_performing_action_;
+  bool ocr_scan_active_;
 
-  // 스캔 시작 시간 추적
+  // OCR 토픽 관련 상태
+  int64_t current_request_id_;
+  std::string current_location_;
   std::chrono::steady_clock::time_point scan_start_time_;
-
-  // OCR 스캔 관련
-  std::shared_ptr<robot_msgs::srv::OCRScan::Request> current_scan_request_;
-  std::shared_ptr<robot_msgs::srv::OCRScan::Response> scan_response_;
 
   // 메서드
   void initPubSub();
@@ -98,15 +93,12 @@ class QNode : public QThread {
   // 네비게이션 시스템과 통신
   void searchResultCallback(const std_msgs::msg::String::SharedPtr msg);
 
-  // OCR 서비스 처리 (기존 유지)
-  void handleOCRScanRequest(const std::shared_ptr<robot_msgs::srv::OCRScan::Request> request, std::shared_ptr<robot_msgs::srv::OCRScan::Response> response);
+  // OCR 토픽 처리 (서비스 완전 제거)
+  void ocrRequestCallback(const robot_msgs::msg::OCRRequest::SharedPtr msg);
+  void sendOCRResult(bool found, const std::string& detected_text, float confidence, const std::string& message);
 
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
-  void finishOCRScan(bool found, const std::string& detected_text, float confidence, const std::string& message);
 
-  // 정밀 제어 관련
-  void preciseStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg);
-  
   // 향상된 텍스트 매칭 함수들
   std::string normalizeString(const std::string& str);
   double calculateSimilarity(const std::string& str1, const std::string& str2);

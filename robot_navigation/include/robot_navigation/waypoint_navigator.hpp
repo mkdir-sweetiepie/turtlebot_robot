@@ -1,6 +1,6 @@
 /**
  * @file waypoint_navigator.hpp
- * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합 (개선됨)
+ * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 토픽 통합 (서비스 완전 제거)
  * @date May 2025
  */
 
@@ -20,7 +20,8 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
-#include "robot_msgs/srv/ocr_scan.hpp"
+#include "robot_msgs/msg/ocr_request.hpp"
+#include "robot_msgs/msg/ocr_result.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -57,8 +58,9 @@ class WaypointNavigator : public rclcpp::Node {
   using NavigateGoalHandle = rclcpp_action::ClientGoalHandle<NavigateAction>;
   rclcpp_action::Client<NavigateAction>::SharedPtr navigate_client_;
 
-  // OCR 서비스 클라이언트
-  rclcpp::Client<robot_msgs::srv::OCRScan>::SharedPtr ocr_scan_client_;
+  // OCR 토픽 통신 (서비스 완전 제거)
+  rclcpp::Publisher<robot_msgs::msg::OCRRequest>::SharedPtr ocr_request_pub_;
+  rclcpp::Subscription<robot_msgs::msg::OCRResult>::SharedPtr ocr_result_sub_;
 
   // 마스터와 통신용
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr search_result_pub_;
@@ -69,9 +71,16 @@ class WaypointNavigator : public rclcpp::Node {
   bool mission_active_;
   size_t current_waypoint_index_;
   bool navigation_active_;
+  bool waiting_for_result_;
 
-  // Goal handle 관리 (추가됨)
-  NavigateGoalHandle::SharedPtr current_goal_handle_;
+  // OCR 상태 관리 (토픽 방식)
+  bool waiting_for_ocr_;
+  int64_t current_request_id_;
+  std::chrono::steady_clock::time_point ocr_start_time_;
+
+  // 비동기 처리용
+  rclcpp::TimerBase::SharedPtr status_timer_;
+  std::shared_future<NavigateGoalHandle::SharedPtr> current_goal_future_;
 
   // 네비게이션 관련 메서드
   void navigateToNextWaypoint();
@@ -79,15 +88,13 @@ class WaypointNavigator : public rclcpp::Node {
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
 
   // 상태 처리 메서드
+  void checkStatus();
   void handleNavigationSuccess();
   void handleNavigationFailure();
 
-  // 네비게이션 취소 (추가됨)
-  void cancelCurrentNavigation();
-
-  // OCR 스캔 관련 메서드
+  // OCR 토픽 관련 메서드
   void performOCRScan();
-  void handleOCRResult(std::shared_ptr<robot_msgs::srv::OCRScan::Response> response);
+  void ocrResultCallback(const robot_msgs::msg::OCRResult::SharedPtr msg);
 
   // 통신 관련 메서드
   void searchRequestCallback(const std_msgs::msg::String::SharedPtr msg);

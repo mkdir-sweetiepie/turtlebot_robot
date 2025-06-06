@@ -9,7 +9,7 @@
 
 namespace robot_master {
 
-QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false) {
+QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false), ocr_scan_active_(false), performance(false) {
   int argc = 0;
   char** argv = nullptr;
   rclcpp::init(argc, argv);
@@ -43,32 +43,30 @@ void QNode::initPubSub() {
   // 기존 퍼블리셔/서브스크라이버
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
   sub_vision = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 100, std::bind(&QNode::visionCallback, this, std::placeholders::_1));
-  precise_cmd_pub_ = node->create_publisher<std_msgs::msg::UInt8>("precise_cmd", 10);
-  precise_status_sub_ = node->create_subscription<std_msgs::msg::UInt8>("precise_status", 10, std::bind(&QNode::preciseStatusCallback, this, std::placeholders::_1));
 
-  // 네비게이션 시스템과 통신용 (새로 추가)
+
+  // 네비게이션 시스템과 통신용
   search_request_pub = node->create_publisher<std_msgs::msg::String>("item_search_request", 10);
   search_result_sub = node->create_subscription<std_msgs::msg::String>("item_search_result", 10, std::bind(&QNode::searchResultCallback, this, std::placeholders::_1));
 
-  // 기존 OCR 서비스 (유지)
-  ocr_scan_service_ = node->create_service<robot_msgs::srv::OCRScan>("ocr_scan_request", std::bind(&QNode::handleOCRScanRequest, this, std::placeholders::_1, std::placeholders::_2));
+  // OCR 토픽 통신 (서비스 완전 제거)
+  ocr_request_sub_ = node->create_subscription<robot_msgs::msg::OCRRequest>("ocr_scan_request", 10, std::bind(&QNode::ocrRequestCallback, this, std::placeholders::_1));
+  ocr_result_pub_ = node->create_publisher<robot_msgs::msg::OCRResult>("ocr_scan_result", 10);
 
-  // 후진 및 회전 동작을 위한 타이머 설정
-  precise_step_ = 0;
+  RCLCPP_INFO(node->get_logger(), "QNode 초기화 완료 (OCR 토픽 방식)");
 }
 
-// 문자열 정규화 함수 (공백, 특수문자 제거, 소문자 변환)
+
 std::string QNode::normalizeString(const std::string& str) {
   std::string result;
   for (char c : str) {
-    if (std::isalnum(c)) {  // 영숫자만 유지
+    if (std::isalnum(c)) {
       result += std::tolower(c);
     }
   }
   return result;
 }
 
-// 문자열 유사도 계산 (Levenshtein distance 기반)
 double QNode::calculateSimilarity(const std::string& str1, const std::string& str2) {
   size_t len1 = str1.length();
   size_t len2 = str2.length();
@@ -95,9 +93,8 @@ double QNode::calculateSimilarity(const std::string& str1, const std::string& st
   return 1.0 - (double)dp[len1][len2] / max_len;
 }
 
-// 향상된 텍스트 매칭 함수
 bool QNode::isTextMatch(const std::string& detected_text, const std::string& target_text, float confidence) {
-  // 1. 정확한 매칭 (대소문자 무시)
+  // 1. 정확한 매칭
   std::string detected_lower = detected_text;
   std::string target_lower = target_text;
   std::transform(detected_lower.begin(), detected_lower.end(), detected_lower.begin(), ::tolower);
@@ -110,35 +107,31 @@ bool QNode::isTextMatch(const std::string& detected_text, const std::string& tar
 
   // 2. 부분 문자열 매칭
   if (detected_lower.find(target_lower) != std::string::npos || target_lower.find(detected_lower) != std::string::npos) {
-    Q_EMIT logMessage(QString("부분 문자열 매칭: '%1' <-> '%2'").arg(QString::fromStdString(detected_text)).arg(QString::fromStdString(target_text)));
+    Q_EMIT logMessage(QString("부분 매칭: '%1' <-> '%2'").arg(QString::fromStdString(detected_text)).arg(QString::fromStdString(target_text)));
     return true;
   }
 
-  // 3. 정규화된 문자열 비교 (공백, 특수문자 제거)
+  // 3. 정규화된 문자열 비교
   std::string normalized_detected = normalizeString(detected_text);
   std::string normalized_target = normalizeString(target_text);
 
   if (!normalized_detected.empty() && !normalized_target.empty()) {
     if (normalized_detected == normalized_target) {
-      Q_EMIT logMessage(QString("정규화된 매칭: '%1' -> '%2' == '%3' -> '%4'")
-                            .arg(QString::fromStdString(detected_text))
-                            .arg(QString::fromStdString(normalized_detected))
-                            .arg(QString::fromStdString(target_text))
-                            .arg(QString::fromStdString(normalized_target)));
+      Q_EMIT logMessage(QString("정규화 매칭: '%1' -> '%2'").arg(QString::fromStdString(detected_text)).arg(QString::fromStdString(normalized_detected)));
       return true;
     }
 
-    // 4. 유사도 기반 매칭 (85% 이상 + 높은 신뢰도)
+    // 4. 유사도 기반 매칭
     double similarity = calculateSimilarity(normalized_detected, normalized_target);
 
-    Q_EMIT logMessage(QString("유사도 계산: '%1' vs '%2' = %.2f%% (신뢰도: %.1f%%)")
+    Q_EMIT logMessage(QString("유사도: '%1' vs '%2' = %.1f%% (신뢰도: %.1f%%)")
                           .arg(QString::fromStdString(normalized_detected))
                           .arg(QString::fromStdString(normalized_target))
                           .arg(similarity * 100)
                           .arg(confidence * 100));
 
     if (similarity >= 0.85 && confidence >= 0.7) {
-      Q_EMIT logMessage(QString("유사도 매칭 성공: %.2f%% (임계값: 85%%)").arg(similarity * 100));
+      Q_EMIT logMessage(QString("유사도 매칭 성공: %.1f%%").arg(similarity * 100));
       return true;
     }
   }
@@ -170,15 +163,15 @@ void QNode::searchResultCallback(const std_msgs::msg::String::SharedPtr msg) {
 
   if (result.find("FOUND:") == 0) {
     // 물품 발견됨
-    std::string found_item = result.substr(6);  // "FOUND:" 제거
-    Q_EMIT logMessage(QString("네비게이션 시스템에서 물품 '%1'을(를) 발견했다고 보고했습니다!").arg(QString::fromStdString(found_item)));
+    std::string found_item = result.substr(6);
+    Q_EMIT logMessage(QString("물품 '%1'을(를) 발견했습니다!").arg(QString::fromStdString(found_item)));
 
-    // 자동 리프트 동작 시작
+    // 1초 후 리프트 동작 시작
     QTimer::singleShot(1000, [this]() { performItemFoundActions(); });
 
   } else if (result.find("NOT_FOUND:") == 0) {
     // 물품 찾지 못함
-    std::string item = result.substr(10);  // "NOT_FOUND:" 제거
+    std::string item = result.substr(10);
     Q_EMIT logMessage(QString("모든 거점을 검색했지만 물품 '%1'을(를) 찾지 못했습니다.").arg(QString::fromStdString(item)));
     setState(WorkState::IDLE);
 
@@ -189,72 +182,87 @@ void QNode::searchResultCallback(const std_msgs::msg::String::SharedPtr msg) {
   }
 }
 
-void QNode::handleOCRScanRequest(const std::shared_ptr<robot_msgs::srv::OCRScan::Request> request, std::shared_ptr<robot_msgs::srv::OCRScan::Response> response) {
-  RCLCPP_INFO(node->get_logger(), "OCR 스캔 요청: %s에서 '%s' 물품 검색", request->current_location.c_str(), request->target_item_id.c_str());
+void QNode::ocrRequestCallback(const robot_msgs::msg::OCRRequest::SharedPtr msg) {
+  RCLCPP_INFO(node->get_logger(), "OCR 요청 수신: %s에서 '%s' 검색 (ID: %ld)", msg->current_location.c_str(), msg->target_item_id.c_str(), msg->request_id);
 
-  // 타겟 아이템 설정 및 상태 업데이트
-  target_item_ = request->target_item_id;
-  current_scan_request_ = request;
+  // 이전 스캔이 진행 중이면 정리
+  if (ocr_scan_active_) {
+    RCLCPP_WARN(node->get_logger(), "이전 OCR 스캔 강제 종료");
+    ocr_scan_active_ = false;
+  }
+
+  // 새 OCR 요청 처리
+  target_item_ = msg->target_item_id;
+  current_request_id_ = msg->request_id;
+  current_location_ = msg->current_location;
   setState(WorkState::WORKING);
 
-  Q_EMIT logMessage(QString("%1에서 '%2' 물품 OCR 스캔 시작").arg(QString::fromStdString(request->current_location)).arg(QString::fromStdString(request->target_item_id)));
+  Q_EMIT logMessage(QString("%1에서 '%2' OCR 스캔 시작").arg(QString::fromStdString(msg->current_location)).arg(QString::fromStdString(msg->target_item_id)));
 
-  // OCR 스캔 시작 (vision 시스템이 자동으로 감지)
+  // OCR 스캔 상태 설정
   ocr_scan_active_ = true;
-  scan_response_ = response;
-
-  // 스캔 시작 시간 기록
   scan_start_time_ = std::chrono::steady_clock::now();
 
-  // 12초 후 타임아웃 처리 (더 여유있게)
-  QTimer::singleShot(12000, [this]() {
+  // 10초 타이머 설정
+  QTimer::singleShot(30000, [this]() {
     if (ocr_scan_active_) {
-      finishOCRScan(false, "", 0.0f, "OCR 스캔 타임아웃");
+      Q_EMIT logMessage("OCR 스캔 타임아웃 (10초)");
+
+      sendOCRResult(false, "", 0.0f, "OCR 스캔 타임아웃");
     }
   });
+
+  Q_EMIT logMessage("비전 시스템에서 OCR 결과 대기 중...");
 }
 
 void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg) {
-  if (!ocr_scan_active_ || !vision_msg) return;
+  if (!ocr_scan_active_ || !vision_msg) {
+    return;
+  }
 
   QString detected_text = QString::fromStdString(vision_msg->ocr_text);
   float confidence = vision_msg->confidence;
 
   if (vision_msg->ocr_detected) {
-    Q_EMIT logMessage(QString("OCR 감지됨 - 텍스트: '%1', 신뢰도: %2%%").arg(detected_text).arg(QString::number(confidence * 100, 'f', 1)));
+    Q_EMIT logMessage(QString("OCR 감지: '%1' (신뢰도: %2%%)").arg(detected_text).arg(QString::number(confidence * 100, 'f', 1)));
 
-    // 향상된 텍스트 매칭 사용
+    // 텍스트 매칭 확인
     if (isTextMatch(vision_msg->ocr_text, target_item_, confidence)) {
-      Q_EMIT logMessage(QString("목표 물품 매칭 성공! 감지: '%1', 목표: '%2'").arg(detected_text).arg(QString::fromStdString(target_item_)));
-      finishOCRScan(true, vision_msg->ocr_text, confidence, "목표 물품 발견");
-    } else {
-      // 매칭 실패했지만 계속 시도 (타임아웃까지)
-      auto now = std::chrono::steady_clock::now();
-      auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - scan_start_time_).count();
+      Q_EMIT logMessage(QString("목표 물품 매칭 성공!"));
+      performItemFoundActions();
+      if (performance) {
+        sendOCRResult(true, vision_msg->ocr_text, confidence, "목표 물품 발견");
+      }
 
-      Q_EMIT logMessage(QString("물품 불일치 ('%1' != '%2'), 계속 스캔 중... (%3초 경과)").arg(detected_text).arg(QString::fromStdString(target_item_)).arg(elapsed));
-      // OCR 스캔을 즉시 종료하지 않고 계속 시도
+    } else {
+      Q_EMIT logMessage("물품 불일치, 계속 스캔 중...");
     }
-  } else {
-    // 물품이 감지되지 않았지만 즉시 실패로 처리하지 않음
-    Q_EMIT logMessage("물품 감지 안됨, 계속 스캔 중...");
   }
 }
 
-void QNode::finishOCRScan(bool found, const std::string& detected_text, float confidence, const std::string& message) {
-  if (!ocr_scan_active_) return;
+void QNode::sendOCRResult(bool found, const std::string& detected_text, float confidence, const std::string& message) {
+  if (!ocr_scan_active_) {
+    return;
+  }
 
   ocr_scan_active_ = false;
 
-  if (scan_response_) {
-    scan_response_->item_found = found;
-    scan_response_->detected_text = detected_text;
-    scan_response_->confidence = confidence;
-    scan_response_->continue_search = !found;  // 찾지 못했을 때만 계속 검색
-    scan_response_->message = message;
+  // OCR 결과 메시지 생성
+  auto result_msg = robot_msgs::msg::OCRResult();
+  result_msg.request_id = current_request_id_;
+  result_msg.item_found = found;
+  result_msg.detected_text = detected_text;
+  result_msg.confidence = confidence;
+  result_msg.target_item_id = target_item_;
+  result_msg.current_location = current_location_;
+  result_msg.message = message;
 
-    Q_EMIT logMessage(QString("OCR 스캔 완료: %1").arg(QString::fromStdString(message)));
-  }
+  // 결과 발행
+  ocr_result_pub_->publish(result_msg);
+
+  Q_EMIT logMessage(QString("OCR 결과 전송: %1").arg(QString::fromStdString(message)));
+
+  RCLCPP_INFO(node->get_logger(), "OCR 결과 전송 완료 (ID: %ld, 발견: %s)", current_request_id_, found ? "예" : "아니오");
 
   if (!found) {
     setState(WorkState::IDLE);
@@ -265,50 +273,46 @@ void QNode::performItemFoundActions() {
   if (lift_performing_action_) return;
 
   lift_performing_action_ = true;
-  precise_step_ = 1;  // 회전 단계
+  RCLCPP_INFO(node->get_logger(), "물품 발견 후 리프트 동작 시작");
+  Q_EMIT logMessage("물품 발견! 180도 회전 후 후진하여 리프트 동작 시작");
 
-  Q_EMIT logMessage("1단계: 180도 회전 시작 (완료 신호 대기)");
-  sendPreciseCommand(1);  // 180도 회전 명령
-}
+  const double ROTATION_SPEED = 0.5;
+  const double ROTATION_DURATION = M_PI / ROTATION_SPEED;
+  const double BACKWARD_SPEED = 0.1;
+  const double BACKWARD_DURATION = 2.0;
 
-void QNode::sendPreciseCommand(uint8_t cmd) {
-  auto msg = std_msgs::msg::UInt8();
-  msg.data = cmd;
-  precise_cmd_pub_->publish(msg);
+  // 180도 회전
+  geometry_msgs::msg::Twist twist;
+  twist.angular.z = ROTATION_SPEED;
+  pub_motor->publish(twist);
 
-  QString cmd_name = (cmd == 1) ? "180도 회전" : "20cm 후진";
-  Q_EMIT logMessage(QString("OpenCR에 명령 전송: %1").arg(cmd_name));
-}
+  QTimer::singleShot(ROTATION_DURATION * 1000, [this, BACKWARD_SPEED, BACKWARD_DURATION]() {
+    Q_EMIT logMessage("회전 완료, 후진 시작");
 
-void QNode::preciseStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg) {
-  uint8_t status = msg->data;
+    // 후진
+    geometry_msgs::msg::Twist backward_twist;
+    backward_twist.linear.x = -BACKWARD_SPEED;
+    pub_motor->publish(backward_twist);
 
-  if (status == 11 && precise_step_ == 1) {  // 회전 완료
-    precise_step_ = 2;                       // 후진 단계로
-    Q_EMIT logMessage("✅ 180도 회전 완료! 2단계: 20cm 후진 시작");
-    sendPreciseCommand(2);  // 즉시 후진 명령
+    QTimer::singleShot(BACKWARD_DURATION * 1000, [this]() {
+      Q_EMIT logMessage("후진 완료, 정지 후 리프트 올림");
 
-  } else if (status == 12 && precise_step_ == 2) {  // 후진 완료
-    precise_step_ = 3;                              // 완료 단계로
-    Q_EMIT logMessage("✅ 20cm 후진 완료! 3단계: 리프트 동작 시작");
+      // 정지
+      geometry_msgs::msg::Twist stop_twist;
+      pub_motor->publish(stop_twist);
 
-    // 리프트 동작
-    liftUp();
-    QTimer::singleShot(3000, [this]() {
-      liftStop();
-      Q_EMIT logMessage("✅ 정밀 제어 완료! 물품 픽업 성공!");
-      setState(WorkState::COMPLETED);
-      lift_performing_action_ = false;
-      precise_step_ = 0;  // 대기 상태로 복귀
+      // 리프트 올림
+      liftUp();
+
+      QTimer::singleShot(1000, [this]() {
+        Q_EMIT logMessage("리프트 동작 완료");
+        liftStop();
+        setState(WorkState::COMPLETED);
+        lift_performing_action_ = false;
+      });
     });
-
-  } else if (status == 1) {  // 실행 중
-    if (precise_step_ == 1) {
-      Q_EMIT logMessage("🔄 180도 회전 실행 중...");
-    } else if (precise_step_ == 2) {
-      Q_EMIT logMessage("🔄 20cm 후진 실행 중...");
-    }
-  }
+  });
+  performance = true;
 }
 
 void QNode::cancelTask() {
@@ -321,6 +325,7 @@ void QNode::cancelTask() {
   msg.data = "CANCEL";
   search_request_pub->publish(msg);
 
+  // 상태 초기화
   ocr_scan_active_ = false;
   setState(WorkState::IDLE);
   target_item_ = "";

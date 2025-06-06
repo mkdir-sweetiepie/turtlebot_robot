@@ -23,13 +23,13 @@ find_package(geometry_msgs REQUIRED)
 # 메시지 파일 설정
 set(msg_files
   "msg/VisionMsg.msg"
+  "msg/OCRRequest.msg"
+  "msg/OCRResult.msg"
 )
 
-# 서비스 파일 설정  
+
 set(srv_files
-  "srv/OCRScan.srv"
   "srv/LiftControl.srv"
-  "srv/ItemSearchRequest.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
