@@ -33,13 +33,13 @@ void QNode::run() {
 }
 
 void QNode::initPubSub() {
-  // ocr output pub
+  // ocr output pub (OCR 결과 전송)
   vision_pub = node->create_publisher<robot_msgs::msg::VisionMsg>("turtle_vision", 100);
-  // ocr request pub
+  // ocr request pub (이미지 전송)
   ocr_request_pub = node->create_publisher<sensor_msgs::msg::Image>("/ocr_request", 10);
   // usb_cam sub
   image_sub = node->create_subscription<sensor_msgs::msg::Image>("camera1/image_raw", 10, std::bind(&QNode::callbackImage, this, std::placeholders::_1));
-  // ocr result sub
+  // ocr result sub (이미지 처리 결과 수신)
   ocr_result_sub = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 10, std::bind(&QNode::ocrResultCallback, this, std::placeholders::_1));
   // 5초마다 ocr 추론 요청 타이머 설정
   ocr_timer = node->create_wall_timer(std::chrono::milliseconds(5000), std::bind(&QNode::requestOCRInference, this));

@@ -43,6 +43,8 @@ void QNode::initPubSub() {
   // 기존 퍼블리셔/서브스크라이버
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
   sub_vision = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 100, std::bind(&QNode::visionCallback, this, std::placeholders::_1));
+  precise_cmd_pub_ = node->create_publisher<std_msgs::msg::UInt8>("precise_cmd", 10);
+  precise_status_sub_ = node->create_subscription<std_msgs::msg::UInt8>("precise_status", 10, std::bind(&QNode::preciseStatusCallback, this, std::placeholders::_1));
 
   // 네비게이션 시스템과 통신용 (새로 추가)
   search_request_pub = node->create_publisher<std_msgs::msg::String>("item_search_request", 10);
@@ -50,6 +52,9 @@ void QNode::initPubSub() {
 
   // 기존 OCR 서비스 (유지)
   ocr_scan_service_ = node->create_service<robot_msgs::srv::OCRScan>("ocr_scan_request", std::bind(&QNode::handleOCRScanRequest, this, std::placeholders::_1, std::placeholders::_2));
+
+  // 후진 및 회전 동작을 위한 타이머 설정
+  precise_step_ = 0;
 }
 
 // 문자열 정규화 함수 (공백, 특수문자 제거, 소문자 변환)
@@ -260,44 +265,50 @@ void QNode::performItemFoundActions() {
   if (lift_performing_action_) return;
 
   lift_performing_action_ = true;
-  Q_EMIT logMessage("물품 발견! 180도 회전 후 후진하여 리프트 동작 시작");
+  precise_step_ = 1;  // 회전 단계
 
-  const double ROTATION_SPEED = 0.5;
-  const double ROTATION_DURATION = M_PI / ROTATION_SPEED;
-  const double BACKWARD_SPEED = 0.1;
-  const double BACKWARD_DURATION = 2.0;
+  Q_EMIT logMessage("1단계: 180도 회전 시작 (완료 신호 대기)");
+  sendPreciseCommand(1);  // 180도 회전 명령
+}
 
-  // 180도 회전
-  geometry_msgs::msg::Twist twist;
-  twist.angular.z = ROTATION_SPEED;
-  pub_motor->publish(twist);
+void QNode::sendPreciseCommand(uint8_t cmd) {
+  auto msg = std_msgs::msg::UInt8();
+  msg.data = cmd;
+  precise_cmd_pub_->publish(msg);
 
-  QTimer::singleShot(ROTATION_DURATION * 1000, [this, BACKWARD_SPEED, BACKWARD_DURATION]() {
-    Q_EMIT logMessage("회전 완료, 후진 시작");
+  QString cmd_name = (cmd == 1) ? "180도 회전" : "20cm 후진";
+  Q_EMIT logMessage(QString("OpenCR에 명령 전송: %1").arg(cmd_name));
+}
 
-    // 후진
-    geometry_msgs::msg::Twist backward_twist;
-    backward_twist.linear.x = -BACKWARD_SPEED;
-    pub_motor->publish(backward_twist);
+void QNode::preciseStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg) {
+  uint8_t status = msg->data;
 
-    QTimer::singleShot(BACKWARD_DURATION * 1000, [this]() {
-      Q_EMIT logMessage("후진 완료, 정지 후 리프트 올림");
+  if (status == 11 && precise_step_ == 1) {  // 회전 완료
+    precise_step_ = 2;                       // 후진 단계로
+    Q_EMIT logMessage("✅ 180도 회전 완료! 2단계: 20cm 후진 시작");
+    sendPreciseCommand(2);  // 즉시 후진 명령
 
-      // 정지
-      geometry_msgs::msg::Twist stop_twist;
-      pub_motor->publish(stop_twist);
+  } else if (status == 12 && precise_step_ == 2) {  // 후진 완료
+    precise_step_ = 3;                              // 완료 단계로
+    Q_EMIT logMessage("✅ 20cm 후진 완료! 3단계: 리프트 동작 시작");
 
-      // 리프트 올림
-      liftUp();
-
-      QTimer::singleShot(3000, [this]() {
-        Q_EMIT logMessage("리프트 동작 완료");
-        liftStop();
-        setState(WorkState::COMPLETED);
-        lift_performing_action_ = false;
-      });
+    // 리프트 동작
+    liftUp();
+    QTimer::singleShot(3000, [this]() {
+      liftStop();
+      Q_EMIT logMessage("✅ 정밀 제어 완료! 물품 픽업 성공!");
+      setState(WorkState::COMPLETED);
+      lift_performing_action_ = false;
+      precise_step_ = 0;  // 대기 상태로 복귀
     });
-  });
+
+  } else if (status == 1) {  // 실행 중
+    if (precise_step_ == 1) {
+      Q_EMIT logMessage("🔄 180도 회전 실행 중...");
+    } else if (precise_step_ == 2) {
+      Q_EMIT logMessage("🔄 20cm 후진 실행 중...");
+    }
+  }
 }
 
 void QNode::cancelTask() {

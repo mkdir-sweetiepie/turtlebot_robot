@@ -15,6 +15,7 @@
 #include "robot_msgs/msg/vision_msg.hpp"
 #include "robot_msgs/srv/ocr_scan.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 
 namespace robot_master {
 
@@ -38,6 +39,9 @@ class QNode : public QThread {
   void liftStop();
   double getLiftHeight();
 
+  void sendPreciseCommand(uint8_t cmd);
+  void checkPreciseActionProgress();
+
   RobotDriving driving_;  // 로봇 주행 제어
   WorkState getCurrentState() const { return current_work_state_; }
 
@@ -57,6 +61,12 @@ class QNode : public QThread {
   // Publishers & Subscribers
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_motor;
   rclcpp::Subscription<robot_msgs::msg::VisionMsg>::SharedPtr sub_vision;
+  // 정밀 제어 통신
+  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr precise_cmd_pub_;
+  rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr precise_status_sub_;
+
+  // 상태 관리 (타이머 제거!)
+  int precise_step_;  // 0: 대기, 1: 회전 중, 2: 후진 중, 3: 완료
 
   // 네비게이션 시스템과 통신용 퍼블리셔/서브스크라이버
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr search_request_pub;
@@ -94,6 +104,9 @@ class QNode : public QThread {
   void visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg);
   void finishOCRScan(bool found, const std::string& detected_text, float confidence, const std::string& message);
 
+  // 정밀 제어 관련
+  void preciseStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg);
+  
   // 향상된 텍스트 매칭 함수들
   std::string normalizeString(const std::string& str);
   double calculateSimilarity(const std::string& str1, const std::string& str2);

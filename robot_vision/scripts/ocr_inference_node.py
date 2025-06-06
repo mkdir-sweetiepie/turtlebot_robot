@@ -59,7 +59,7 @@ class RPN(nn.Module):
 class OCRInferenceNode(Node):
     def __init__(self):
         super().__init__("ocr_inference_node")
-
+        # 이미지 받음
         self.image_subscription = self.create_subscription(
             Image, "/ocr_request", self.image_callback, 10
         )
@@ -254,6 +254,8 @@ class OCRInferenceNode(Node):
 
         return best_match, best_score, best_text
 
+
+    # 비전 메시지를 발행
     def publish_results(self, results, processing_time_ms):
         vision_msg = VisionMsg()
         vision_msg.fps = processing_time_ms

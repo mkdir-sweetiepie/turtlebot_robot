@@ -1,6 +1,6 @@
 /**
  * @file waypoint_navigator.hpp
- * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합 (수정됨)
+ * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 서비스 통합 (개선됨)
  * @date May 2025
  */
 
@@ -69,11 +69,9 @@ class WaypointNavigator : public rclcpp::Node {
   bool mission_active_;
   size_t current_waypoint_index_;
   bool navigation_active_;
-  bool waiting_for_result_;
 
-  // 비동기 처리용
-  rclcpp::TimerBase::SharedPtr status_timer_;
-  std::shared_future<NavigateGoalHandle::SharedPtr> current_goal_future_;
+  // Goal handle 관리 (추가됨)
+  NavigateGoalHandle::SharedPtr current_goal_handle_;
 
   // 네비게이션 관련 메서드
   void navigateToNextWaypoint();
@@ -81,9 +79,11 @@ class WaypointNavigator : public rclcpp::Node {
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
 
   // 상태 처리 메서드
-  void checkStatus();
   void handleNavigationSuccess();
   void handleNavigationFailure();
+
+  // 네비게이션 취소 (추가됨)
+  void cancelCurrentNavigation();
 
   // OCR 스캔 관련 메서드
   void performOCRScan();
