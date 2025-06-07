@@ -2,7 +2,6 @@
 #define robot_master_ROBOT_DRIVING_HPP_
 
 #include "geometry_msgs/msg/twist.hpp"
-#include "robot_msgs/msg/master_msg.hpp"
 
 namespace robot_master {
 

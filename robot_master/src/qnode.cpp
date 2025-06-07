@@ -9,7 +9,7 @@
 
 namespace robot_master {
 
-QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false), ocr_scan_active_(false), performance(false), precise_step_(0), navigation_mode_(false) {
+QNode::QNode() : current_work_state_(WorkState::IDLE), target_item_(""), lift_performing_action_(false), ocr_scan_active_(false), precise_step_(0), navigation_mode_(false) {
   int argc = 0;
   char** argv = nullptr;
   rclcpp::init(argc, argv);
@@ -44,14 +44,14 @@ void QNode::initPubSub() {
   pub_motor = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
   sub_vision = node->create_subscription<robot_msgs::msg::VisionMsg>("turtle_vision", 100, std::bind(&QNode::visionCallback, this, std::placeholders::_1));
 
-  // 정밀 제어 서비스 클라이언트 (새로 추가)
+  // 정밀 제어 서비스 클라이언트
   precise_control_client_ = node->create_client<robot_msgs::srv::PreciseControl>("precise_control");
 
   // 네비게이션 시스템과 통신용
   search_request_pub = node->create_publisher<std_msgs::msg::String>("item_search_request", 10);
   search_result_sub = node->create_subscription<std_msgs::msg::String>("item_search_result", 10, std::bind(&QNode::searchResultCallback, this, std::placeholders::_1));
 
-  // OCR 토픽 통신 (서비스 완전 제거)
+  // OCR 토픽 통신
   ocr_request_sub_ = node->create_subscription<robot_msgs::msg::OCRRequest>("ocr_scan_request", 10, std::bind(&QNode::ocrRequestCallback, this, std::placeholders::_1));
   ocr_result_pub_ = node->create_publisher<robot_msgs::msg::OCRResult>("ocr_scan_result", 10);
 
@@ -63,7 +63,10 @@ void QNode::callPreciseControlService(const std::string& action) {
   if (!precise_control_client_->wait_for_service(std::chrono::seconds(10))) {
     Q_EMIT logMessage("정밀 제어 서비스를 사용할 수 없습니다.");
     RCLCPP_ERROR(node->get_logger(), "정밀 제어 서비스 연결 실패");
+
+    // 실패 시 플래그 해제 및 OCR 결과 전송
     lift_performing_action_ = false;
+    sendOCRResult(false, "", 0.0f, "정밀 제어 서비스 연결 실패");
     return;
   }
 
@@ -82,21 +85,30 @@ void QNode::callPreciseControlService(const std::string& action) {
         Q_EMIT logMessage(QString("정밀 제어 완료: %1 (%.2f초 소요)").arg(QString::fromStdString(response->message)).arg(response->duration));
 
         if (action == "pickup_sequence") {
-          // 전체 픽업 시퀀스 완료
           setState(WorkState::COMPLETED);
-          lift_performing_action_ = false;
           RCLCPP_INFO(node->get_logger(), "물품 픽업 미션 완료");
-          performance = true;
+
+          // 성공 시에만 OCR 결과 전송
+          sendOCRResult(true, target_item_, 1.0f, "목표 물품 발견 및 픽업 완료");
         }
       } else {
         Q_EMIT logMessage(QString("정밀 제어 실패: %1").arg(QString::fromStdString(response->message)));
         setState(WorkState::IDLE);
-        lift_performing_action_ = false;
+
+        // 실패 시 OCR 결과 전송
+        sendOCRResult(false, "", 0.0f, "정밀 제어 실패");
       }
+
+      // 성공/실패 관계없이 항상 플래그 해제
+      lift_performing_action_ = false;
+
     } catch (const std::exception& e) {
       Q_EMIT logMessage(QString("정밀 제어 서비스 오류: %1").arg(e.what()));
       setState(WorkState::IDLE);
+
+      // 예외 시 플래그 해제 및 OCR 결과 전송
       lift_performing_action_ = false;
+      sendOCRResult(false, "", 0.0f, "정밀 제어 서비스 오류");
     }
   });
 }
@@ -232,6 +244,18 @@ void QNode::searchResultCallback(const std_msgs::msg::String::SharedPtr msg) {
 void QNode::ocrRequestCallback(const robot_msgs::msg::OCRRequest::SharedPtr msg) {
   RCLCPP_INFO(node->get_logger(), "OCR 요청 수신: %s에서 '%s' 검색 (ID: %ld)", msg->current_location.c_str(), msg->target_item_id.c_str(), msg->request_id);
 
+  // 리프트 동작 중이면 요청 거부
+  if (lift_performing_action_) {
+    RCLCPP_WARN(node->get_logger(), "리프트 동작 중이므로 OCR 요청 거부 (ID: %ld)", msg->request_id);
+
+    auto result_msg = robot_msgs::msg::OCRResult();
+    result_msg.request_id = msg->request_id;
+    result_msg.item_found = false;
+    result_msg.message = "리프트 동작 중이므로 OCR 요청 거부";
+    ocr_result_pub_->publish(result_msg);
+    return;
+  }
+
   // 이전 스캔이 진행 중이면 정리
   if (ocr_scan_active_) {
     RCLCPP_WARN(node->get_logger(), "이전 OCR 스캔 강제 종료");
@@ -250,11 +274,10 @@ void QNode::ocrRequestCallback(const robot_msgs::msg::OCRRequest::SharedPtr msg)
   ocr_scan_active_ = true;
   scan_start_time_ = std::chrono::steady_clock::now();
 
-  // 10초 타이머 설정
-  QTimer::singleShot(30000, [this]() {
+  // 60초 타이머 설정 (정밀 제어 시간을 고려하여 충분히 여유롭게)
+  QTimer::singleShot(60000, [this]() {
     if (ocr_scan_active_) {
-      Q_EMIT logMessage("OCR 스캔 타임아웃 (10초)");
-
+      Q_EMIT logMessage("OCR 스캔 타임아웃 (60초)");
       sendOCRResult(false, "", 0.0f, "OCR 스캔 타임아웃");
     }
   });
@@ -262,9 +285,11 @@ void QNode::ocrRequestCallback(const robot_msgs::msg::OCRRequest::SharedPtr msg)
   Q_EMIT logMessage("비전 시스템에서 OCR 결과 대기 중...");
 }
 
+// QNode::visionCallback 수정 (중복 호출 완전 방지)
 void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vision_msg) {
-  if (!ocr_scan_active_ || !vision_msg) {
-    return;
+  // 중복 호출 방지를 위한 강화된 체크
+  if (!ocr_scan_active_ || !vision_msg || lift_performing_action_) {
+    return;  // 이미 정밀 제어가 진행 중이거나 OCR이 비활성화된 경우 무시
   }
 
   QString detected_text = QString::fromStdString(vision_msg->ocr_text);
@@ -276,10 +301,15 @@ void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vis
     // 텍스트 매칭 확인
     if (isTextMatch(vision_msg->ocr_text, target_item_, confidence)) {
       Q_EMIT logMessage(QString("목표 물품 매칭 성공!"));
+
+      // 즉시 OCR 스캔 종료 및 리프트 동작 플래그 설정 (중복 방지)
+      ocr_scan_active_ = false;
+      lift_performing_action_ = true;
+
+      Q_EMIT logMessage("OCR 스캔 종료, 정밀 제어 시작");
+
+      // 정밀 제어 시작
       performItemFoundActions();
-      if (performance) {
-        sendOCRResult(true, vision_msg->ocr_text, confidence, "목표 물품 발견");
-      }
 
     } else {
       Q_EMIT logMessage("물품 불일치, 계속 스캔 중...");
@@ -288,7 +318,15 @@ void QNode::visionCallback(const std::shared_ptr<robot_msgs::msg::VisionMsg> vis
 }
 
 void QNode::sendOCRResult(bool found, const std::string& detected_text, float confidence, const std::string& message) {
-  if (!ocr_scan_active_) {
+  // 성공 결과는 정밀 제어 완료 후에만 전송 가능
+  if (found && lift_performing_action_) {
+    RCLCPP_INFO(node->get_logger(), "정밀 제어 완료 후 OCR 결과 전송 대기");
+    return;
+  }
+
+  // 실패 결과는 OCR 스캔이 활성화된 경우에만 전송
+  if (!found && !ocr_scan_active_) {
+    RCLCPP_DEBUG(node->get_logger(), "OCR 스캔이 이미 비활성화됨, 결과 전송 취소");
     return;
   }
 
@@ -317,12 +355,13 @@ void QNode::sendOCRResult(bool found, const std::string& detected_text, float co
 }
 
 void QNode::performItemFoundActions() {
+  // 이중 체크로 중복 호출 완전 방지
   if (lift_performing_action_) {
-    Q_EMIT logMessage("이미 리프트 동작이 진행 중입니다.");
+    Q_EMIT logMessage("정밀 제어가 이미 진행 중입니다. 중복 호출 방지됨.");
     return;
   }
 
-  lift_performing_action_ = true;
+  lift_performing_action_ = true;  // 플래그 설정
 
   RCLCPP_INFO(node->get_logger(), "물품 발견 후 정밀 제어 서비스 호출 시작");
   Q_EMIT logMessage("물품 발견! 정밀 제어 서비스로 픽업 시퀀스 시작");
