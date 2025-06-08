@@ -502,11 +502,11 @@ turtlebot3_ws/
 
 | 이름 | 담당 영역 | GitHub |
 |------|-----------|---------|
-| **정우경** | OCR 모델, 이미지 처리 | [@Jeongwoogyeong](https://github.com/Jeongwoogyeong) |
-| **오가현** | 시뮬레이션 | [@Ohgahyun](https://github.com/Ohgahyun) |
-| **임동균** | 리프트 시스템, Dynamixel | [@Yimdonggyun](https://github.com/Yimdonggyun) |
-| **최상준** | 네비게이션 시스템 | [@Choisangjun](https://github.com/Choisangjun) |
-| **홍지현** | Qt GUI, 시스템 통합 | [@Hongjihyeon](https://github.com/Hongjihyeon) |
+| **정우경** | OCR 모델, 이미지 처리 | [@Jeongwoogyeong](https://github.com/wooujoa) |
+| **오가현** | 시뮬레이션 | [@Ohgahyun](https://github.com/gahyun0425) |
+| **임동균** | 리프트 시스템, Dynamixel | [@Yimdonggyun](https://github.com/David02345) |
+| **최상준** | 네비게이션 시스템 | [@Choisangjun](https://github.com/Samuel3740) |
+| **홍지현** | Qt GUI, 시스템 통합 | [@Hongjihyeon](https://github.com/mkdir-sweetiepie) |
 
 ---
 
