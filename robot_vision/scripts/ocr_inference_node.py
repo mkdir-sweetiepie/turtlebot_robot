@@ -3,7 +3,8 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from robot_msgs.msg import VisionMsg
+from std_msgs.msg import Bool
+from robot_msgs.msg import VisionMsg, LogMessage
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
@@ -59,11 +60,25 @@ class RPN(nn.Module):
 class OCRInferenceNode(Node):
     def __init__(self):
         super().__init__("ocr_inference_node")
-        # 이미지 받음
+
+        # === OCR 제어 상태 ===
+        self.ocr_enabled = False
+        self.processing_image = False
+
+        # === 구독자 ===
+        # Navigation에서 OCR 활성화/비활성화 제어
+        self.ocr_control_sub = self.create_subscription(
+            Bool, "ocr_control", self.ocr_control_callback, 10
+        )
+        # Vision에서 이미지 수신
         self.image_subscription = self.create_subscription(
             Image, "/ocr_request", self.image_callback, 10
         )
+
+        # === 퍼블리셔 ===
         self.vision_publisher = self.create_publisher(VisionMsg, "turtle_vision", 10)
+        # 통합 로그 시스템
+        self.system_log_pub = self.create_publisher(LogMessage, "system_log", 100)
 
         self.bridge = CvBridge()
         self.setup_models()
@@ -77,12 +92,141 @@ class OCRInferenceNode(Node):
             "과자",
         ]
 
-        self.get_logger().info("OCR 추론 노드가 시작되었습니다.")
+        self.publish_system_log(
+            "INFO", "OCR 추론 노드가 시작되었습니다 (자동 제어 모드)."
+        )
+        self.publish_system_log("INFO", "Navigation 노드의 제어 명령을 대기 중...")
+
+    def publish_system_log(self, level, message):
+        """통합 로그 시스템으로 로그 메시지 전송"""
+        log_msg = LogMessage()
+        log_msg.node_name = "ocr_inference"
+        log_msg.level = level
+        log_msg.message = message
+        log_msg.timestamp = self.get_clock().now().to_msg()
+        self.system_log_pub.publish(log_msg)
+
+    def ocr_control_callback(self, msg):
+        """Navigation에서 OCR 활성화/비활성화 제어"""
+        if msg.data and not self.ocr_enabled:
+            self.ocr_enabled = True
+            self.processing_image = False
+            self.publish_system_log("INFO", "OCR 시스템이 활성화되었습니다.")
+        elif not msg.data and self.ocr_enabled:
+            self.ocr_enabled = False
+            self.processing_image = False
+            self.publish_system_log("INFO", "OCR 시스템이 비활성화되었습니다.")
+
+    def image_callback(self, msg):
+        """이미지 수신 및 OCR 처리 (활성화 상태일 때만)"""
+        if not self.ocr_enabled:
+            self.publish_system_log("DEBUG", "OCR 비활성화 상태 - 이미지 무시")
+            return
+
+        if self.processing_image:
+            self.publish_system_log("DEBUG", "이미 이미지 처리 중 - 새 이미지 무시")
+            return
+
+        try:
+            self.processing_image = True
+            start_time = time.time()
+
+            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            results = self.perform_ocr_inference(cv_image)
+
+            end_time = time.time()
+            processing_time_ms = int((end_time - start_time) * 1000)
+
+            self.publish_results(results, processing_time_ms)
+
+        except Exception as e:
+            self.publish_system_log("ERROR", f"이미지 처리 오류: {str(e)}")
+        finally:
+            self.processing_image = False
+
+    def perform_ocr_inference(self, cv_image):
+        """OCR 추론 수행"""
+        try:
+            rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+            pil_image = PILImage.fromarray(rgb_image)
+
+            boxes, scores = self.infer_from_frame(pil_image)
+
+            results = []
+            for i, box in enumerate(boxes):
+                x_min, y_min, x_max, y_max = self.expand_box(
+                    box, 0.1, cv_image.shape[1], cv_image.shape[0]
+                )
+
+                crop = pil_image.crop((int(x_min), int(y_min), int(x_max), int(y_max)))
+                processed = self.preprocess_image(np.array(crop))
+
+                ocr_results = self.reader.readtext(
+                    processed,
+                    detail=1,
+                    decoder="greedy",
+                    rotation_info=[0, 90, 180, 270],
+                )
+
+                best_match, best_score, best_text = self.find_best_ocr_match(
+                    ocr_results
+                )
+
+                if best_match:
+                    results.append(
+                        {
+                            "text": best_match,
+                            "confidence": best_score,
+                            "bbox": [int(x_min), int(y_min), int(x_max), int(y_max)],
+                            "raw_text": best_text,
+                        }
+                    )
+
+                    self.publish_system_log(
+                        "INFO",
+                        f'[물품 {i+1}] OCR: "{best_text}" → "{best_match}" (신뢰도: {best_score:.2f}) 위치: [{int(x_min)}, {int(y_min)}, {int(x_max)}, {int(y_max)}]',
+                    )
+
+            return results
+
+        except Exception as e:
+            self.publish_system_log("ERROR", f"OCR 추론 오류: {str(e)}")
+            return []
+
+    def publish_results(self, results, processing_time_ms):
+        """OCR 결과 퍼블리시"""
+        vision_msg = VisionMsg()
+        vision_msg.fps = processing_time_ms
+
+        if results:
+            best_result = max(results, key=lambda x: x["confidence"])
+            vision_msg.ocr_detected = True
+            vision_msg.ocr_text = best_result["text"]
+            vision_msg.confidence = float(best_result["confidence"])
+
+            self.publish_system_log(
+                "INFO",
+                f"물품 인식 성공: {vision_msg.ocr_text} (신뢰도: {vision_msg.confidence:.2f}) 처리시간: {processing_time_ms}ms",
+            )
+        else:
+            vision_msg.ocr_detected = False
+            vision_msg.ocr_text = ""
+            vision_msg.confidence = 0.0
+
+            self.publish_system_log(
+                "INFO", f"물품 인식 실패 - 처리시간: {processing_time_ms}ms"
+            )
+
+        self.vision_publisher.publish(vision_msg)
+
+        # 결과 퍼블리시 후 잠시 대기 (결과가 처리될 시간 확보)
+        time.sleep(0.5)
 
     def setup_models(self):
+        """모델 초기화"""
         try:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self.get_logger().info(f"디바이스: {self.device}")
+            self.publish_system_log("INFO", f"디바이스: {self.device}")
 
             self.reader = easyocr.Reader(["ko"], gpu=torch.cuda.is_available())
 
@@ -128,8 +272,9 @@ class OCRInferenceNode(Node):
                             self.backbone.load_state_dict(
                                 checkpoint["backbone_state_dict"]
                             )
-                            self.get_logger().info(
-                                f"모델 가중치를 성공적으로 로드했습니다: {model_path}"
+                            self.publish_system_log(
+                                "INFO",
+                                f"모델 가중치를 성공적으로 로드했습니다: {model_path}",
                             )
                             model_loaded = True
                             break
@@ -146,8 +291,9 @@ class OCRInferenceNode(Node):
                             self.backbone.load_state_dict(
                                 checkpoint["backbone_state_dict"]
                             )
-                            self.get_logger().info(
-                                f"모델 가중치를 성공적으로 로드했습니다 (fallback): {model_path}"
+                            self.publish_system_log(
+                                "INFO",
+                                f"모델 가중치를 성공적으로 로드했습니다 (fallback): {model_path}",
                             )
                             model_loaded = True
                             break
@@ -155,8 +301,9 @@ class OCRInferenceNode(Node):
                         continue
 
             if not model_loaded:
-                self.get_logger().warn(
-                    "모델 체크포인트를 찾을 수 없습니다. 기본 가중치를 사용합니다."
+                self.publish_system_log(
+                    "WARN",
+                    "모델 체크포인트를 찾을 수 없습니다. 기본 가중치를 사용합니다.",
                 )
 
             self.transform = A.Compose(
@@ -169,72 +316,10 @@ class OCRInferenceNode(Node):
             )
 
         except Exception as e:
-            self.get_logger().error(f"모델 초기화 실패: {str(e)}")
-
-    def image_callback(self, msg):
-        try:
-            start_time = time.time()
-
-            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            results = self.perform_ocr_inference(cv_image)
-
-            end_time = time.time()
-            processing_time_ms = int((end_time - start_time) * 1000)
-
-            self.publish_results(results, processing_time_ms)
-
-        except Exception as e:
-            self.get_logger().error(f"이미지 처리 오류: {str(e)}")
-
-    def perform_ocr_inference(self, cv_image):
-        try:
-            rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-            pil_image = PILImage.fromarray(rgb_image)
-
-            boxes, scores = self.infer_from_frame(pil_image)
-
-            results = []
-            for i, box in enumerate(boxes):
-                x_min, y_min, x_max, y_max = self.expand_box(
-                    box, 0.1, cv_image.shape[1], cv_image.shape[0]
-                )
-
-                crop = pil_image.crop((int(x_min), int(y_min), int(x_max), int(y_max)))
-                processed = self.preprocess_image(np.array(crop))
-
-                ocr_results = self.reader.readtext(
-                    processed,
-                    detail=1,
-                    decoder="greedy",
-                    rotation_info=[0, 90, 180, 270],
-                )
-
-                best_match, best_score, best_text = self.find_best_ocr_match(
-                    ocr_results
-                )
-
-                if best_match:
-                    results.append(
-                        {
-                            "text": best_match,
-                            "confidence": best_score,
-                            "bbox": [int(x_min), int(y_min), int(x_max), int(y_max)],
-                            "raw_text": best_text,
-                        }
-                    )
-
-                    self.get_logger().info(
-                        f'[물품 {i+1}] OCR: "{best_text}" → "{best_match}" (신뢰도: {best_score:.2f}) '
-                        f"위치: [{int(x_min)}, {int(y_min)}, {int(x_max)}, {int(y_max)}]"
-                    )
-
-            return results
-
-        except Exception as e:
-            self.get_logger().error(f"OCR 추론 오류: {str(e)}")
-            return []
+            self.publish_system_log("ERROR", f"모델 초기화 실패: {str(e)}")
 
     def find_best_ocr_match(self, ocr_results):
+        """OCR 결과에서 최적 매칭 찾기"""
         best_match = None
         best_score = 0
         best_text = ""
@@ -254,30 +339,8 @@ class OCRInferenceNode(Node):
 
         return best_match, best_score, best_text
 
-
-    # 비전 메시지를 발행
-    def publish_results(self, results, processing_time_ms):
-        vision_msg = VisionMsg()
-        vision_msg.fps = processing_time_ms
-
-        if results:
-            best_result = max(results, key=lambda x: x["confidence"])
-            vision_msg.ocr_detected = True
-            vision_msg.ocr_text = best_result["text"]
-            vision_msg.confidence = float(best_result["confidence"])
-
-            self.get_logger().info(
-                f"물품 인식 완료: {vision_msg.ocr_text} (신뢰도: {vision_msg.confidence:.2f}) "
-                f"처리시간: {processing_time_ms}ms"
-            )
-        else:
-            vision_msg.ocr_detected = False
-            vision_msg.ocr_text = ""
-            vision_msg.confidence = 0.0
-
-            self.get_logger().info(f"물품 인식 실패 - 처리시간: {processing_time_ms}ms")
-
-        self.vision_publisher.publish(vision_msg)
+    # 기존 유틸리티 함수들 (generate_anchors, decode_bbox, expand_box, preprocess_image,
+    # find_best_match, infer_from_frame) 은 동일하게 유지...
 
     def generate_anchors(self, feature_maps, sizes, ratios, strides):
         anchors = []
@@ -364,7 +427,6 @@ class OCRInferenceNode(Node):
         score_threshold=0.7,
         nms_threshold=0.3,
     ):
-
         orig_w, orig_h = pil_image.size
         transformed = self.transform(image=np.array(pil_image))
         image_tensor = transformed["image"].unsqueeze(0).to(self.device)

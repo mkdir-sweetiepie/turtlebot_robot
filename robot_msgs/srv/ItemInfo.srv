@@ -1,0 +1,12 @@
+# robot_msgs/srv/ItemInfo.srv
+# 물품 정보 조회 서비스
+
+# Request
+string item_id           # 조회할 물품 ID
+---
+# Response
+bool item_exists         # 물품 존재 여부
+string description       # 물품 설명
+string category          # 물품 카테고리
+float32 expected_size    # 예상 크기/무게
+string storage_info      # 보관 정보

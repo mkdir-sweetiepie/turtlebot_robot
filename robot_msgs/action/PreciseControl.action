@@ -1,0 +1,17 @@
+# robot_msgs/action/PreciseControl.action
+# 정밀 제어 액션 정의
+
+# Goal
+string action_type        # "pickup_sequence" 또는 "dropoff_sequence"
+---
+# Result  
+bool success             # 액션 성공 여부
+string message           # 결과 메시지
+float32 total_duration   # 총 소요 시간 (초)
+float32 final_height     # 최종 리프트 높이 (미터)
+---
+# Feedback
+string current_step      # 현재 단계 ("180도 회전", "20cm 후진", "리프트 동작")
+int32 step_number        # 단계 번호 (1, 2, 3)
+float32 progress         # 현재 단계 진행률 (0.0 ~ 1.0)
+float32 elapsed_time     # 경과 시간 (초)

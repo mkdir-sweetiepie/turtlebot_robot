@@ -1,6 +1,6 @@
 /**
  * @file waypoint_navigator.hpp
- * @brief TurtleBot3 웨이포인트 네비게이션 + OCR 토픽 통합 (서비스 완전 제거)
+ * @brief TurtleBot3 웨이포인트 네비게이션 + 정밀 제어 액션 통합
  * @date May 2025
  */
 
@@ -20,8 +20,11 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "robot_msgs/action/precise_control.hpp"
+#include "robot_msgs/msg/log_message.hpp"
 #include "robot_msgs/msg/ocr_request.hpp"
 #include "robot_msgs/msg/ocr_result.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -40,25 +43,25 @@ class WaypointNavigator : public rclcpp::Node {
   WaypointNavigator();
   virtual ~WaypointNavigator() = default;
 
-  // 초기 위치 설정
-  void setInitialPose();
-
-  // 시스템 활성화 대기
-  bool waitForServices();
-
-  // 검색용 웨이포인트 설정
-  void initializeSearchWaypoints();
+  // 로그 시스템
+  void publishSystemLog(const std::string& level, const std::string& message);
 
  private:
+  // 액션 타입 정의
+  using NavigateAction = nav2_msgs::action::NavigateToPose;
+  using NavigateGoalHandle = rclcpp_action::ClientGoalHandle<NavigateAction>;
+  using PreciseControlAction = robot_msgs::action::PreciseControl;
+  using PreciseControlGoalHandle = rclcpp_action::ClientGoalHandle<PreciseControlAction>;
+
   // 웨이포인트 관련
   std::vector<Waypoint> search_waypoints_;
 
-  // Nav2 액션 클라이언트
-  using NavigateAction = nav2_msgs::action::NavigateToPose;
-  using NavigateGoalHandle = rclcpp_action::ClientGoalHandle<NavigateAction>;
+  // 액션 클라이언트
   rclcpp_action::Client<NavigateAction>::SharedPtr navigate_client_;
+  rclcpp_action::Client<PreciseControlAction>::SharedPtr precise_control_client_;
 
-  // OCR 토픽 통신 (서비스 완전 제거)
+  // OCR 제어 및 통신
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr ocr_control_pub_;
   rclcpp::Publisher<robot_msgs::msg::OCRRequest>::SharedPtr ocr_request_pub_;
   rclcpp::Subscription<robot_msgs::msg::OCRResult>::SharedPtr ocr_result_sub_;
 
@@ -66,16 +69,21 @@ class WaypointNavigator : public rclcpp::Node {
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr search_result_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr search_request_sub_;
 
+  // 통합 로그 시스템
+  rclcpp::Publisher<robot_msgs::msg::LogMessage>::SharedPtr system_log_pub_;
+
   // 상태 관리
   std::string target_item_;
   bool mission_active_;
   size_t current_waypoint_index_;
   bool navigation_active_;
   bool waiting_for_result_;
-  bool returning_home_;
-
-  // OCR 상태 관리 (토픽 방식)
   bool waiting_for_ocr_;
+  bool returning_home_;
+  bool ocr_active_;
+  bool precise_control_active_;
+
+  // OCR 상태 관리
   int64_t current_request_id_;
   std::chrono::steady_clock::time_point ocr_start_time_;
 
@@ -83,20 +91,35 @@ class WaypointNavigator : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr status_timer_;
   std::shared_future<NavigateGoalHandle::SharedPtr> current_goal_future_;
 
-  // 네비게이션 관련 메서드
+  // OCR 제어
+  void enableOCR();
+  void disableOCR();
+
+  // 초기화 관련
+  void initializeSearchWaypoints();
+  void setInitialPose();
+  bool waitForServices();
+
+  // 네비게이션 관련
   void navigateToNextWaypoint();
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
 
-  // 상태 처리 메서드
+  // 상태 처리
   void checkStatus();
   void handleNavigationSuccess();
   void handleNavigationFailure();
 
-  // OCR 토픽 관련 메서드
+  // OCR 관련
   void performOCRScan();
   void ocrResultCallback(const robot_msgs::msg::OCRResult::SharedPtr msg);
 
-  // 통신 관련 메서드
+  // 정밀 제어 액션 관련
+  void callPreciseControlAction();
+  void preciseControlGoalResponseCallback(const PreciseControlGoalHandle::SharedPtr& goal_handle);
+  void preciseControlFeedbackCallback(const PreciseControlGoalHandle::SharedPtr& goal_handle, const std::shared_ptr<const PreciseControlAction::Feedback> feedback);
+  void preciseControlResultCallback(const PreciseControlGoalHandle::WrappedResult& result);
+
+  // 통신 관련
   void searchRequestCallback(const std_msgs::msg::String::SharedPtr msg);
   void sendSearchResult(const std::string& result);
 
