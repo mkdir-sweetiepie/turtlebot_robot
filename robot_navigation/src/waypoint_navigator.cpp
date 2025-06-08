@@ -45,8 +45,8 @@ WaypointNavigator::WaypointNavigator()
 void WaypointNavigator::initializeSearchWaypoints() {
   search_waypoints_.clear();
 
-  search_waypoints_ = {{"시작 위치", 0.01, 0.0, 0.0},    {"경유 위치 A", 0.5, 0.0, 0.0},   {"위치 1", 0.5, 0.5, M_PI / 2},  {"위치 2", 1.0, 0.4, M_PI / 2},
-                       {"위치 3", 1.0, -0.5, -M_PI / 2}, {"위치 4", 0.5, -0.5, -M_PI / 2}, {"경유 위치 A", 0.3, 0.0, M_PI}, {"시작 위치 (귀환)", 0.01, 0.0, M_PI}};
+  search_waypoints_ = {{"시작 위치", 0.01, 0.0, 0.0},    {"경유 위치 A", 0.5, 0.0, 0.0},   {"위치 1", 0.5, 0.4, M_PI / 2},  {"위치 2", 0.9, 0.4, M_PI / 2},
+                       {"위치 3", 0.9, -0.4, -M_PI / 2}, {"위치 4", 0.5, -0.4, -M_PI / 2}, {"경유 위치 A", 0.3, 0.0, M_PI}, {"시작 위치 (귀환)", 0.01, 0.0, M_PI}};
 
   RCLCPP_INFO(this->get_logger(), "웨이포인트 %zu개가 설정되었습니다:", search_waypoints_.size());
   for (size_t i = 0; i < search_waypoints_.size(); i++) {

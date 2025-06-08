@@ -117,7 +117,7 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.2  # 0.1 → 0.2 (더 관대하게)
+      xy_goal_tolerance: 0.1  # 0.1 → 0.2 (더 관대하게)
       yaw_goal_tolerance: 0.1  # 0.1 → 0.3
 
     # DWB parameters - 속도 및 부드러움 최적화
@@ -146,7 +146,7 @@ controller_server:
       linear_granularity: 0.1    # 그래뉼러리티 증가로 부드러운 경로
       angular_granularity: 0.05
       transform_tolerance: 0.3   # 변환 허용 오차 증가
-      xy_goal_tolerance: 0.15
+      xy_goal_tolerance: 0.1
       trans_stopped_velocity: 0.1  # 정지 판정 속도 감소
       short_circuit_trajectory_evaluation: True
       stateful: True
