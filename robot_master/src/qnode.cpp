@@ -132,8 +132,8 @@ void QNode::handleItemInfoServiceRequest(const std::shared_ptr<robot_msgs::srv::
 
   std::map<std::string, std::tuple<std::string, std::string, float, std::string>> item_database = {{"초코프렌즈우유", std::make_tuple("초콜릿 맛 우유", "음료", 0.2f, "냉장보관 필요")},
                                                                                                    {"계란과자", std::make_tuple("달걀 모양 과자", "스낵", 0.15f, "상온보관 가능")},
-                                                                                                   {"정우경", std::make_tuple("팀 리더", "사람", 163.1f, "홍지현한테 혼나는 사람")},
-                                                                                                   {"홍지현", std::make_tuple("팀 멤버", "사람", 163.7f, "정우경한테 혼내는 사람")},
+                                                                                                   {"정우경", std::make_tuple("팀 리더", "사람", 163.1f, "성격좋고 잘생김")},
+                                                                                                   {"홍지현", std::make_tuple("팀 멤버", "사람", 163.7f, "로봇의 신")},
                                                                                                    {"음료수", std::make_tuple("일반 음료", "음료", 0.25f, "냉장보관 권장")},
                                                                                                    {"과자", std::make_tuple("일반 과자", "스낵", 0.1f, "상온보관 가능")}};
 
