@@ -205,14 +205,11 @@ void QNode::startPreciseControl() {
 
 // 정밀 제어 단계별 실행 (ROS2 타이머 콜백)
 void QNode::executePreciseControlStep() {
-  // 타이머 정지
+  // 타이머 정지 (다음 단계 준비)
   if (precise_control_timer_) {
     precise_control_timer_->cancel();
     precise_control_timer_ = nullptr;
   }
-
-  auto current_time = std::chrono::steady_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - precise_control_start_time_).count();
 
   switch (precise_step_) {
     case 0: {
@@ -224,18 +221,18 @@ void QNode::executePreciseControlStep() {
       RCLCPP_INFO(node->get_logger(), "1단계 완료 - 2단계: 20cm 후진 시작");
 
       precise_step_ = 1;
-      RobotDriving::start = true;    // ← 계속 활성화 상태 유지
+      RobotDriving::start = true;    // 계속 활성화 상태 유지
       driving_.setSpeed(-0.1, 0.0);  // 후진
 
-      // 2초 후 다음 단계로 이동 (ROS2 타이머)
-      precise_control_timer_ = node->create_wall_timer(std::chrono::milliseconds(2000), std::bind(&QNode::executePreciseControlStep, this));
+      // 2.3초 후 다음 단계로 이동
+      precise_control_timer_ = node->create_wall_timer(std::chrono::milliseconds(2300), std::bind(&QNode::executePreciseControlStep, this));
       break;
     }
 
     case 1: {
       // 2단계 완료: 20cm 후진 완료, 3단계 시작
       driving_.setSpeed(0.0, 0.0);  // 후진 정지
-      RobotDriving::start = false;  // ← 로봇 이동 정지
+      RobotDriving::start = false;  // 로봇 이동 정지
 
       Q_EMIT logMessage("2단계 완료: 20cm 후진 완료");
       Q_EMIT logMessage("3단계: 리프트 올리기 시작");
@@ -245,47 +242,46 @@ void QNode::executePreciseControlStep() {
       precise_step_ = 2;
       lift_controller_->moveUp();  // 리프트 올리기 시작
 
-      // 리프트 상태를 주기적으로 체크 (100ms 간격)
-      precise_control_timer_ = node->create_wall_timer(std::chrono::milliseconds(100), std::bind(&QNode::executePreciseControlStep, this));
+      // 1.3초 후 리프트 완료
+      precise_control_timer_ = node->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&QNode::executePreciseControlStep, this));
       break;
     }
 
     case 2: {
-      // 3단계: 리프트 높이 체크
+      // 3단계 완료: 리프트 올리기 완료
+      lift_controller_->stop();  // 리프트 정지
+
+      // 경과 시간 계산 (전체 정밀 제어 시간)
+      auto end_time = std::chrono::steady_clock::now();
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - precise_control_start_time_).count();
+
       double current_height = lift_controller_->getCurrentHeight();
-      double max_height = 0.7;
 
-      if (current_height >= max_height - 0.1) {
-        // 타이머 정지
-        if (precise_control_timer_) {
-          precise_control_timer_->cancel();
-          precise_control_timer_ = nullptr;
-        }
+      Q_EMIT logMessage(QString("3단계 완료: 리프트 올리기 완료 (%.2fm)").arg(current_height));
+      Q_EMIT logMessage(QString("정밀 제어 완료! (총 소요시간: %.1f초)").arg(elapsed / 1000.0));
 
-        lift_controller_->stop();
-        Q_EMIT logMessage(QString("3단계 완료: 리프트 최대 높이 도달 (%.2fm)").arg(current_height));
-        Q_EMIT logMessage(QString("정밀 제어 완료! (총 소요시간: %.1f초)").arg(elapsed / 1000.0));
+      RCLCPP_INFO(node->get_logger(), "정밀 제어 시퀀스 완료 - 리프트 높이: %.2fm, 소요시간: %.1f초", current_height, elapsed / 1000.0);
 
-        RCLCPP_INFO(node->get_logger(), "정밀 제어 시퀀스 완료 - 리프트 높이: %.2fm", current_height);
+      // 정밀 제어 완료 상태 초기화
+      precise_control_mode_ = false;
+      lift_performing_action_ = false;
+      precise_step_ = 0;  // 단계 초기화
 
-        // 정밀 제어 완료
-        precise_control_mode_ = false;  // ← 정밀 제어 모드 비활성화
-        setState(WorkState::COMPLETED);
-        lift_performing_action_ = false;
-
-        // OCR 결과 전송
-        sendOCRResult(true, target_item_, 1.0f, "목표 물품 발견 및 픽업 완료");
-        return;
-      }
-
-      // 계속 체크 (타이머는 이미 설정되어 있으므로 추가 설정 불필요)
-      Q_EMIT logMessage(QString("리프트 올리는 중... (현재: %.2fm / 목표: %.2fm)").arg(current_height).arg(max_height));
-      break;
+      // OCR 결과 전송
+      sendOCRResult(true, target_item_, 1.0f, "목표 물품 발견 및 픽업 완료");
+      return;
     }
 
     default:
       Q_EMIT logMessage("정밀 제어 오류: 알 수 없는 단계");
-      completePreciseControlWithError("정밀 제어 단계 오류");
+
+      // 오류 시 상태 초기화
+      precise_control_mode_ = false;
+      lift_performing_action_ = false;
+      precise_step_ = 0;
+
+      // 오류 결과 전송
+      sendOCRResult(false, "", 0.0f, "정밀 제어 단계 오류");
       break;
   }
 }
@@ -318,7 +314,7 @@ void QNode::sendOCRResult(bool found, const std::string& detected_text, float co
 
   // 결과 발행
   ocr_result_pub_->publish(result_msg);
-
+  navigation_mode_ = true;
   Q_EMIT logMessage(QString("OCR 결과 전송: %1").arg(QString::fromStdString(message)));
 
   RCLCPP_INFO(node->get_logger(), "OCR 결과 전송 완료 (ID: %ld, 발견: %s)", current_request_id_, found ? "예" : "아니오");

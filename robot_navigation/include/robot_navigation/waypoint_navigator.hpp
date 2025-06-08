@@ -72,6 +72,7 @@ class WaypointNavigator : public rclcpp::Node {
   size_t current_waypoint_index_;
   bool navigation_active_;
   bool waiting_for_result_;
+  bool returning_home_;
 
   // OCR 상태 관리 (토픽 방식)
   bool waiting_for_ocr_;
@@ -84,7 +85,6 @@ class WaypointNavigator : public rclcpp::Node {
 
   // 네비게이션 관련 메서드
   void navigateToNextWaypoint();
-  bool navigateToWaypointBlocking(const Waypoint& waypoint);
   geometry_msgs::msg::PoseStamped createPoseFromWaypoint(const Waypoint& waypoint);
 
   // 상태 처리 메서드
