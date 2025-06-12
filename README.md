@@ -131,7 +131,7 @@
 
 ## 핵심 기능
 
-### 🤖 자율 네비게이션
+### 자율 네비게이션
 - **SLAM & Mapping**: Cartographer 기반 실시간 지도 생성
 - **경로 계획**: Nav2 스택을 활용한 최적 경로 계산
 - **장애물 회피**: 동적 장애물 감지 및 회피
@@ -506,7 +506,7 @@ turtlebot3_ws/
 | **오가현** | 시뮬레이션 | [@Ohgahyun](https://github.com/gahyun0425) |
 | **임동균** | 리프트 시스템, Dynamixel | [@Yimdonggyun](https://github.com/David02345) |
 | **최상준** | 네비게이션 시스템 | [@Choisangjun](https://github.com/Samuel3740) |
-| **홍지현** | Qt GUI, 시스템 통합 | [@Hongjihyeon](https://github.com/mkdir-sweetiepie) |
+| **홍지현** | Qt GUI, 시스템 통합, 네비게이션 시스템 | [@Hongjihyeon](https://github.com/mkdir-sweetiepie) |
 
 ---
 
