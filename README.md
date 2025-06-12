@@ -288,7 +288,7 @@ source ~/.bashrc
 mkdir -p ~/turtlebot3_ws/src/turtlebot_robot/robot_vision/models/
 
 # OCR 모델 다운로드 (Google Drive에서 다운로드 후 이동)
-# https://drive.google.com/drive/folders/1EiXxVB3fff_02BRlWfy7Ie57Vk5ZDHDy
+https://drive.google.com/drive/folders/1EiXxVB3fff_02BRlWfy7Ie57Vk5ZDHDy
 # final_model.pth 파일을 다운로드하여 위 경로에 저장
 ```
 
@@ -333,44 +333,13 @@ ros2 launch usb_cam camera.launch.py
 ```
 
 **2단계: 개발용 PC에서 제어 시스템 실행**
-
-```bash
-# 터미널 1: 통합 네비게이션 시스템
-ros2 launch robot_navigation navigation_launch.py
-
-# 터미널 2: 메인 제어 시스템
-ros2 run robot_master robot_master
-
-# 터미널 3: 비전 시스템 (선택사항, GUI 필요시)
-ros2 run robot_vision robot_vision
-```
-
-#### 🎮 시뮬레이션 실행
-
-```bash
-# 터미널 1: Gazebo 시뮬레이션
-ros2 launch turtlebot3_gazebo empty_world.launch.py
-
-# 터미널 2: 통합 네비게이션 시스템
-ros2 launch robot_navigation navigation_launch.py
-
-# 터미널 3: 메인 제어 시스템
-ros2 run robot_master robot_master
-```
-
-#### 📊 통합 실행 (권장)
+ 통합 실행 (권장)
 
 모든 시스템을 한 번에 실행:
-
 ```bash
-# 모든 노드를 시간차로 자동 실행
-ros2 launch robot_master robot_master.launch.py target_item:="초코프렌즈우유"
-
-# 또는 시뮬레이션 모드로
-ros2 launch robot_master robot_master.launch.py use_sim:=true target_item:="정우경"
+# 터미널 : 통합 네비게이션 시스템
+ros2 launch robot_navigation navigation_launch.py
 ```
-
----
 
 ## 사용법
 
@@ -486,13 +455,7 @@ turtlebot3_ws/
 │   │   └── action/
 │   │       └── PreciseControl.action   # 정밀 제어 액션
 │   │
-│   └── turtlebot3_simulations/          # 시뮬레이션 환경
-│       ├── turtlebot3_gazebo/
-│       │   ├── worlds/
-│       │   │   └── empty_world.world   # Gazebo 월드
-│       │   └── launch/
-│       │       └── empty_world.launch.py
-│       └── ...
+
 ```
 ---
 
