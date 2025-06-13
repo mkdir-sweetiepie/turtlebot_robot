@@ -336,9 +336,19 @@ ros2 launch usb_cam camera.launch.py
  통합 실행 (권장)
 
 모든 시스템을 한 번에 실행:
+
 ```bash
 # 터미널 : 통합 네비게이션 시스템
 ros2 launch robot_navigation navigation_launch.py
+```
+시뮬레이션 환경에서 실행:
+turtlebot_navigation-config-tb3_nav_params.yaml에서 <br>
+use_sim_time: true 변경
+turtlebot_vision-src-qnode.cpp에서 <br>
+/camera1/image_raw->/camera/image_raw 로 수정
+```bash
+ros2 launch robot_navigation navigation_launch.py
+ros2 launch turtlebot3_gazebo empty_world.launch.py
 ```
 
 ## 사용법
